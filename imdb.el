@@ -26,6 +26,49 @@
 ;;; Code:
 
 (require 'cl)
+(require 'url)
+(require 'dom)
+
+(defvar imdb-query-url "http://www.imdb.com/xml/find?xml=1&nr=1&tt=on&q=%s")
+
+(defun imdb-get-data (title)
+  (with-current-buffer (url-retrieve-synchronously
+			(format imdb-query-url title))
+    (goto-char (point-min))
+    (prog1
+	(when (re-search-forward "\n\n" nil t)
+	  (shr-transform-dom (libxml-parse-xml-region (point) (point-max))))
+      (kill-buffer (current-buffer)))))
+
+(defun imdb-sort-results (dom)
+  (sort (dom-by-name dom 'ImdbEntity)
+	(lambda (n1 n2)
+	  (< (imdb-rank dom n1) (imdb-rank dom n2)))))
+
+(defun imdb-rank (dom node)
+  (if (equal (dom-attr (dom-parent dom node) :type) "title_exact")
+      1
+    2))
+
+(defun imdb-extract-data (results)
+  (loop for node in results
+	collect (format
+		 "%s, %s, %s"
+		 (replace-regexp-in-string
+		  "[^0-9]+" ""
+		  (dom-text (dom-by-name node 'Description)))
+		 (replace-regexp-in-string
+		  "," "" (dom-text (dom-by-name node 'a)))
+		 (dom-text node))))
+	
+(defun imdb-query (title)
+  "Query IMDB for TITLE, and then prompt the user for the right match."
+  (interactive "sTitle: ")
+  (let* ((data (imdb-extract-data (imdb-sort-results (imdb-get-data title))))
+	 (result (completing-read "Movie: " (cdr data) nil nil (car data))))
+    (when (string-match "\\([^,]+\\), *\\([^,]+\\)" result)
+      (list (match-string 1 result)
+	    (match-string 2 result)))))
 
 (provide 'imdb)
 

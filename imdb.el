@@ -45,26 +45,66 @@
 	(lambda (n1 n2)
 	  (< (imdb-rank dom n1) (imdb-rank dom n2)))))
 
+(defun imdb-filter-results (movies)
+  "Filter out all shorts and entries without a year."
+  (loop for movie in movies
+	for description = (dom-text (dom-by-name movie 'Description))
+	when (and (not (string-match "\\bshort\\b" description))
+		  (string-match "^[0-9][0-9][0-9][0-9]" description))
+	collect movie))
+
 (defun imdb-rank (dom node)
   (if (equal (dom-attr (dom-parent dom node) :type) "title_exact")
       1
     2))
 
 (defun imdb-extract-data (results)
-  (loop for node in results
+  (loop for i from 0
+	for node in results
 	collect (format
-		 "%s, %s, %s"
+		 "%s%s, %s, %s"
+		 (if (< i 5)
+		     (or (imdb-get-image (dom-attr node :id)) "")
+		   "")
 		 (replace-regexp-in-string
 		  "[^0-9]+" ""
 		  (dom-text (dom-by-name node 'Description)))
 		 (replace-regexp-in-string
 		  "," "" (dom-text (dom-by-name node 'a)))
 		 (dom-text node))))
-	
+
+(defun imdb-get-image (id)
+  (with-current-buffer (url-retrieve-synchronously
+			(format "http://www.imdb.com/title/%s/" id))
+    (goto-char (point-min))
+    (prog1
+	(when (search-forward "\n\n" nil t)
+	  (loop for image in (dom-by-name
+			      (shr-transform-dom (libxml-parse-html-region
+						  (point) (point-max)))
+			      'img)
+		for src = (dom-attr image :src)
+		when (string-match "SY317" src)
+		return (imdb-get-image-string src)))
+      (kill-buffer (current-buffer)))))
+
+(defun imdb-get-image-string (url)
+  (with-current-buffer (url-retrieve-synchronously url)
+    (goto-char (point-min))
+    (prog1
+	(when (search-forward "\n\n" nil t)
+	  (propertize
+	   "foo"
+	   'display
+	   (create-image (buffer-substring (point) (point-max)) nil t)))
+      (kill-buffer (current-buffer)))))
+
 (defun imdb-query (title)
   "Query IMDB for TITLE, and then prompt the user for the right match."
   (interactive "sTitle: ")
-  (let* ((data (imdb-extract-data (imdb-sort-results (imdb-get-data title))))
+  (let* ((data (imdb-extract-data
+		(imdb-filter-results
+		 (imdb-sort-results (imdb-get-data title)))))
 	 (result (completing-read "Movie: " (cdr data) nil nil (car data))))
     (when (string-match "\\([^,]+\\), *\\([^,]+\\)" result)
       (list (match-string 1 result)

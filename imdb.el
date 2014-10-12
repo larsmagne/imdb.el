@@ -50,7 +50,8 @@
   (loop for movie in movies
 	for description = (dom-text (dom-by-name movie 'Description))
 	when (and (not (string-match "\\bshort\\b" description))
-		  (string-match "^[0-9][0-9][0-9][0-9]" description))
+		  (string-match "^[0-9][0-9][0-9][0-9]" description)
+		  (dom-by-name movie 'a))
 	collect movie))
 
 (defun imdb-rank (dom node)

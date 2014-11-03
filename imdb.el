@@ -41,17 +41,17 @@
       (kill-buffer (current-buffer)))))
 
 (defun imdb-sort-results (dom)
-  (sort (dom-by-name dom 'ImdbEntity)
+  (sort (dom-by-tag dom 'ImdbEntity)
 	(lambda (n1 n2)
 	  (< (imdb-rank dom n1) (imdb-rank dom n2)))))
 
 (defun imdb-filter-results (movies)
   "Filter out all shorts and entries without a year."
   (loop for movie in movies
-	for description = (dom-text (dom-by-name movie 'Description))
+	for description = (dom-text (dom-by-tag movie 'Description))
 	when (and (not (string-match "\\bshort\\b" description))
 		  (string-match "^[0-9][0-9][0-9][0-9]" description)
-		  (dom-by-name movie 'a))
+		  (dom-by-tag movie 'a))
 	collect movie))
 
 (defun imdb-rank (dom node)
@@ -69,9 +69,9 @@
 		   "")
 		 (replace-regexp-in-string
 		  "[^0-9]+" ""
-		  (dom-text (dom-by-name node 'Description)))
+		  (dom-text (dom-by-tag node 'Description)))
 		 (replace-regexp-in-string
-		  "," "" (dom-text (dom-by-name node 'a)))
+		  "," "" (dom-text (dom-by-tag node 'a)))
 		 (dom-text node))))
 
 (defun imdb-get-image (id)
@@ -80,12 +80,12 @@
     (goto-char (point-min))
     (prog1
 	(when (search-forward "\n\n" nil t)
-	  (loop for image in (dom-by-name
+	  (loop for image in (dom-by-tag
 			      (shr-transform-dom (libxml-parse-html-region
 						  (point) (point-max)))
 			      'img)
 		for src = (dom-attr image :src)
-		when (string-match "SY317" src)
+		when (and src (string-match "_AL_" src))
 		return (imdb-get-image-string src)))
       (kill-buffer (current-buffer)))))
 

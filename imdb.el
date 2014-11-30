@@ -37,7 +37,7 @@
     (goto-char (point-min))
     (prog1
 	(when (re-search-forward "\n\n" nil t)
-	  (shr-transform-dom (libxml-parse-xml-region (point) (point-max))))
+	  (libxml-parse-xml-region (point) (point-max)))
       (kill-buffer (current-buffer)))))
 
 (defun imdb-sort-results (dom)
@@ -55,7 +55,7 @@
 	collect movie))
 
 (defun imdb-rank (dom node)
-  (if (equal (dom-attr (dom-parent dom node) :type) "title_exact")
+  (if (equal (dom-attr (dom-parent dom node) 'type) "title_exact")
       1
     2))
 
@@ -65,7 +65,7 @@
 	collect (format
 		 "%s%s, %s, %s"
 		 (if (< i 5)
-		     (or (imdb-get-image (dom-attr node :id)) "")
+		     (or (imdb-get-image (dom-attr node 'id)) "")
 		   "")
 		 (replace-regexp-in-string
 		  "[^0-9]+" ""
@@ -81,10 +81,9 @@
     (prog1
 	(when (search-forward "\n\n" nil t)
 	  (loop for image in (dom-by-tag
-			      (shr-transform-dom (libxml-parse-html-region
-						  (point) (point-max)))
+			      (libxml-parse-html-region (point) (point-max))
 			      'img)
-		for src = (dom-attr image :src)
+		for src = (dom-attr image 'src)
 		when (and src (string-match "_AL_" src))
 		return (imdb-get-image-string src)))
       (kill-buffer (current-buffer)))))

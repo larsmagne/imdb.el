@@ -94,7 +94,7 @@
     (prog1
 	(when (search-forward "\n\n" nil t)
 	  (propertize
-	   "foo"
+	   " "
 	   'display
 	   (create-image (buffer-substring (point) (point-max)) nil t)))
       (kill-buffer (current-buffer)))))
@@ -106,7 +106,7 @@
 		(imdb-filter-results
 		 (imdb-sort-results (imdb-get-data title)))))
 	 (result (completing-read "Movie: " (cdr data) nil nil (car data))))
-    (when (string-match "\\([^,]+\\), *\\([^,]+\\)" result)
+    (when (string-match " *\\([^,]+\\), *\\([^,]+\\)" result)
       (list (match-string 1 result)
 	    (match-string 2 result)))))
 

@@ -62,31 +62,39 @@
 (defun imdb-extract-data (results)
   (loop for i from 0
 	for node in results
-	collect (format
-		 "%s%s, %s, %s"
-		 (if (< i 5)
-		     (or (imdb-get-image (dom-attr node 'id)) "")
-		   "")
-		 (replace-regexp-in-string
-		  "[^0-9]+" ""
-		  (dom-text (dom-by-tag node 'Description)))
-		 (replace-regexp-in-string
-		  "," "" (dom-text (dom-by-tag node 'a)))
-		 (dom-text node))))
+	for data = (imdb-get-image-and-country (dom-attr node 'id))
+	collect (propertize
+		 (format
+		  "%s%s, %s, %s, %s"
+		  (if (< i 5)
+		      (or (car data) "")
+		    "")
+		  (replace-regexp-in-string
+		   "[^0-9]+" ""
+		   (dom-text (dom-by-tag node 'Description)))
+		  (cadr data)
+		  (replace-regexp-in-string
+		   "," "" (dom-text (dom-by-tag node 'a)))
+		  (dom-text node))
+		 'id (dom-attr node 'id))))
 
-(defun imdb-get-image (id)
+(defun imdb-get-image-and-country (id)
   (with-current-buffer (url-retrieve-synchronously
 			(format "http://www.imdb.com/title/%s/" id))
     (goto-char (point-min))
-    (prog1
-	(when (search-forward "\n\n" nil t)
-	  (loop for image in (dom-by-tag
-			      (libxml-parse-html-region (point) (point-max))
-			      'img)
-		for src = (dom-attr image 'src)
-		when (and src (string-match "_AL_" src))
-		return (imdb-get-image-string src)))
-      (kill-buffer (current-buffer)))))
+    (let ((country (save-excursion
+		     (when (re-search-forward "/country/\\([a-z]+\\)" nil t)
+		       (match-string 1)))))
+      (prog1
+	  (when (search-forward "\n\n" nil t)
+	    (loop for image in (dom-by-tag
+				(libxml-parse-html-region (point) (point-max))
+				'img)
+		  for src = (dom-attr image 'src)
+		  when (and src (string-match "_AL_" src))
+		  return (list (imdb-get-image-string src)
+			       country)))
+	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-string (url)
   (with-current-buffer (url-retrieve-synchronously url)
@@ -106,11 +114,11 @@
 		(imdb-filter-results
 		 (imdb-sort-results (imdb-get-data title)))))
 	 (result (completing-read "Movie: " (cdr data) nil nil (car data))))
-    (when (string-match " *\\([^,]+\\), *\\([^,]+\\)" result)
+    (when (string-match " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)," result)
       (list (match-string 1 result)
+	    (match-string 3 result)
 	    (match-string 2 result)))))
 
 (provide 'imdb)
 
 ;;; imdb.el ends here
-

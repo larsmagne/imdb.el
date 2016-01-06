@@ -65,7 +65,7 @@
 	for data = (imdb-get-image-and-country (dom-attr node 'id))
 	collect (propertize
 		 (format
-		  "%s%s, %s, %s, %s"
+		  "%s%s, %s, %s, %s, %s"
 		  (if (< i 5)
 		      (or (car data) "")
 		    "")
@@ -73,6 +73,7 @@
 		   "[^0-9]+" ""
 		   (dom-text (dom-by-tag node 'Description)))
 		  (cadr data)
+		  (dom-attr node 'id)
 		  (replace-regexp-in-string
 		   "," "" (dom-text (dom-by-tag node 'a)))
 		  (dom-text node))
@@ -114,10 +115,11 @@
 		(imdb-filter-results
 		 (imdb-sort-results (imdb-get-data title)))))
 	 (result (completing-read "Movie: " (cdr data) nil nil (car data))))
-    (when (string-match " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)," result)
+    (when (string-match " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)," result)
       (list (match-string 1 result)
-	    (match-string 3 result)
-	    (match-string 2 result)))))
+	    (match-string 4 result)
+	    (match-string 2 result)
+	    (match-string 3 result)))))
 
 (provide 'imdb)
 

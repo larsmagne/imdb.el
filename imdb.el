@@ -50,8 +50,7 @@
   (loop for movie in movies
 	for description = (dom-text (dom-by-tag movie 'Description))
 	when (and (not (string-match "\\bshort\\b" description))
-		  (string-match "^[0-9][0-9][0-9][0-9]" description)
-		  (dom-by-tag movie 'a))
+		  (string-match "^[0-9][0-9][0-9][0-9]" description))
 	collect movie))
 
 (defun imdb-rank (dom node)
@@ -63,28 +62,27 @@
   (loop for i from 0
 	for node in results
 	for data = (imdb-get-image-and-country (dom-attr node 'id))
-	collect (propertize
-		 (format
-		  "%s%s, %s, %s, %s, %s"
-		  (if (< i 5)
-		      (or (car data) "")
-		    "")
-		  (replace-regexp-in-string
-		   "[^0-9]+" ""
-		   (dom-text (dom-by-tag node 'Description)))
-		  (cadr data)
-		  (dom-attr node 'id)
-		  (replace-regexp-in-string
-		   "," "" (dom-text (dom-by-tag node 'a)))
-		  (dom-text node))
-		 'id (dom-attr node 'id))))
+	while (< i 5)
+	collect (format
+		 "%s%s, %s, %s, %s, %s"
+		 (if (< i 5)
+		     (or (car data) "")
+		   "")
+		 (replace-regexp-in-string
+		  "[^0-9]+" ""
+		  (dom-text (dom-by-tag node 'Description)))
+		 (cadr data)
+		 (dom-attr node 'id)
+		 (replace-regexp-in-string
+		  "," "" (dom-text (dom-by-tag node 'a)))
+		 (dom-text node))))
 
 (defun imdb-get-image-and-country (id)
   (with-current-buffer (url-retrieve-synchronously
 			(format "http://www.imdb.com/title/%s/" id))
     (goto-char (point-min))
     (let ((country (save-excursion
-		     (when (re-search-forward "/country/\\([a-z]+\\)" nil t)
+		     (when (re-search-forward "countries=\\([a-z]+\\)" nil t)
 		       (match-string 1)))))
       (prog1
 	  (when (search-forward "\n\n" nil t)
@@ -107,6 +105,19 @@
 	   'display
 	   (create-image (buffer-substring (point) (point-max)) nil t)))
       (kill-buffer (current-buffer)))))
+
+(defun imdb-query-full (title)
+  (loop for result in (imdb-extract-data
+		       (imdb-filter-results
+			(imdb-sort-results (imdb-get-data title))))
+	when (string-match
+	      " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)"
+	      result)
+	collect (list :year (match-string 1 result)
+		      :director (match-string 4 result)
+		      :country (match-string 2 result)
+		      :title (match-string 5 result)
+		      :id (match-string 3 result))))
 
 (defun imdb-query (title)
   "Query IMDB for TITLE, and then prompt the user for the right match."

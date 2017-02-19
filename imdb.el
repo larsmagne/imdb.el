@@ -82,7 +82,8 @@
 			(format "http://www.imdb.com/title/%s/" id))
     (goto-char (point-min))
     (let ((country (save-excursion
-		     (when (re-search-forward "countries=\\([a-z]+\\)" nil t)
+		     (when (re-search-forward
+			    "country_of_origin=\\([a-z]+\\)" nil t)
 		       (match-string 1)))))
       (prog1
 	  (when (search-forward "\n\n" nil t)

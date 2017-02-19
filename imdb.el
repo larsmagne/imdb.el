@@ -73,8 +73,11 @@
 		  (dom-text (dom-by-tag node 'Description)))
 		 (cadr data)
 		 (dom-attr node 'id)
-		 (replace-regexp-in-string
-		  "," "" (dom-text (dom-by-tag node 'a)))
+		 (let ((director (replace-regexp-in-string
+				  "," "" (dom-text (dom-by-tag node 'a)))))
+		   (if (zerop (length director))
+		       (caddr data)
+		     director))
 		 (dom-text node))))
 
 (defun imdb-get-image-and-country (id)
@@ -87,13 +90,19 @@
 		       (match-string 1)))))
       (prog1
 	  (when (search-forward "\n\n" nil t)
-	    (loop for image in (dom-by-tag
-				(libxml-parse-html-region (point) (point-max))
-				'img)
+	    (loop with dom = (libxml-parse-html-region (point) (point-max))
+		  for image in (dom-by-tag dom 'img)
 		  for src = (dom-attr image 'src)
 		  when (and src (string-match "_AL_" src))
 		  return (list (imdb-get-image-string src)
-			       country)))
+			       country
+			       (loop for link in (dom-by-tag dom 'a)
+				     for href = (dom-attr link 'href)
+				     when (and href
+					       (string-match "ref_=tt_ov_dr$"
+							     href))
+				     return (dom-text
+					     (dom-by-tag link 'span))))))
 	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-string (url)

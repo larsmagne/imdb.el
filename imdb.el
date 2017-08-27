@@ -110,10 +110,14 @@
     (goto-char (point-min))
     (prog1
 	(when (search-forward "\n\n" nil t)
-	  (propertize
-	   " "
-	   'display
-	   (create-image (buffer-substring (point) (point-max)) nil t)))
+	  (let ((image
+		 (ignore-errors
+		   (create-image
+		    (buffer-substring (point) (point-max)) nil t))))
+	    (when image
+	      (propertize
+	       " "
+	       'display image))))
       (kill-buffer (current-buffer)))))
 
 (defun imdb-query-full (title)

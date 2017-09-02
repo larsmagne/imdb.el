@@ -28,6 +28,7 @@
 (require 'cl)
 (require 'url)
 (require 'dom)
+(require 'json)
 
 (defvar imdb-query-url "http://www.imdb.com/xml/find?xml=1&nr=1&tt=on&q=%s")
 
@@ -80,7 +81,7 @@
 		     director))
 		 (dom-text node))))
 
-(defun imdb-get-image-and-country (id)
+(defun imdb-get-image-and-country (id &optional image-only)
   (with-current-buffer (url-retrieve-synchronously
 			(format "http://www.imdb.com/title/%s/" id))
     (goto-char (point-min))
@@ -94,15 +95,20 @@
 		  for image in (dom-by-tag dom 'img)
 		  for src = (dom-attr image 'src)
 		  when (and src (string-match "_AL_" src))
-		  return (list (imdb-get-image-string src)
-			       country
-			       (loop for link in (dom-by-tag dom 'a)
-				     for href = (dom-attr link 'href)
-				     when (and href
-					       (string-match "ref_=tt_ov_dr$"
-							     href))
-				     return (dom-text
-					     (dom-by-tag link 'span))))))
+		  return (if image-only
+			     (imdb-get-image
+			      (shr-expand-url
+			       (dom-attr (dom-parent dom image) 'href)
+			       "http://www.imdb.com/"))
+			   (list (imdb-get-image-string src)
+				 country
+				 (loop for link in (dom-by-tag dom 'a)
+				       for href = (dom-attr link 'href)
+				       when (and href
+						 (string-match "ref_=tt_ov_dr$"
+							       href))
+				       return (dom-text
+					       (dom-by-tag link 'span)))))))
 	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-string (url)
@@ -118,6 +124,48 @@
 	      (propertize
 	       " "
 	       'display image))))
+      (kill-buffer (current-buffer)))))
+
+(defun imdb-get-image (url)
+  (let* ((json (imdb-get-image-json url))
+	 (src (imdb-get-image-from-json json)))
+    (with-current-buffer (url-retrieve-synchronously src)
+      (goto-char (point-min))
+      (prog1
+	  (when (search-forward "\n\n" nil t)
+	    (buffer-substring (point) (point-max)))
+	(kill-buffer (current-buffer))))))
+
+(defun imdb-get-image-from-json (json)
+  (let ((images
+	 (cdr (cadr (cadr (assq 'galleries (assq 'mediaviewer json))))))
+	(initial
+	 (cdr
+	  (assq 'initialInterstitial
+		(cdr
+		 (assq 'interstitialModel
+		       (cadr (assq 'galleries
+				   (assq 'mediaviewer json)))))))))
+    (loop for image across images
+	  when (equal (cdr (assq 'imageCount image)) initial)
+	  return (cdr (assq 'src image)))))
+
+(defun imdb-get-image-json (url)
+  (with-current-buffer (url-retrieve-synchronously url)
+    (goto-char (point-min))
+    (prog1
+	(when (and (search-forward "\n\n" nil t)
+		   (search-forward "window.IMDbReactInitialState.push("))
+	  (delete-region (point-min) (point))
+	  (end-of-line)
+	  (search-backward "}")
+	  (forward-char 1)
+	  (delete-region (point) (point-max))
+	  (goto-char (point-min))
+	  (while (re-search-forward "'" nil t)
+	    (replace-match "\"" t t))
+	  (goto-char (point-min))
+	  (json-read))
       (kill-buffer (current-buffer)))))
 
 (defun imdb-query-full (title)

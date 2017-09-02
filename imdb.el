@@ -137,17 +137,22 @@
 	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-from-json (json)
-  (let ((images
-	 (cdr (cadr (cadr (assq 'galleries (assq 'mediaviewer json))))))
-	(initial
-	 (cdr
-	  (assq 'initialInterstitial
-		(cdr
-		 (assq 'interstitialModel
-		       (cadr (assq 'galleries
-				   (assq 'mediaviewer json)))))))))
+  (let* ((images
+	  (cdr (cadr (cadr (assq 'galleries (assq 'mediaviewer json))))))
+	 (initial
+	  (cdr
+	   (assq 'initialInterstitial
+		 (cdr
+		  (assq 'interstitialModel
+			(cadr (assq 'galleries
+				    (assq 'mediaviewer json))))))))
+	 (max
+	  (loop for image across images
+		when (equal (cdr (assq 'imageType image)) "poster")
+		maximize (cdr (assq 'h image)))))
     (loop for image across images
-	  when (equal (cdr (assq 'imageCount image)) initial)
+	  when (and (equal (cdr (assq 'imageType image)) "poster")
+		    (equal (cdr (assq 'h image)) max))
 	  return (cdr (assq 'src image)))))
 
 (defun imdb-get-image-json (url)

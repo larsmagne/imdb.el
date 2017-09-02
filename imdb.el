@@ -139,20 +139,17 @@
 (defun imdb-get-image-from-json (json)
   (let* ((images
 	  (cdr (cadr (cadr (assq 'galleries (assq 'mediaviewer json))))))
-	 (initial
+	 (aax
 	  (cdr
-	   (assq 'initialInterstitial
+	   (assq 'aaxUrl
 		 (cdr
 		  (assq 'interstitialModel
 			(cadr (assq 'galleries
 				    (assq 'mediaviewer json))))))))
-	 (max
-	  (loop for image across images
-		when (equal (cdr (assq 'imageType image)) "poster")
-		maximize (cdr (assq 'h image)))))
+	 (initial (and (string-match "mediaviewer%2F\\([^%]+\\)" aax)
+		       (match-string 1 aax))))
     (loop for image across images
-	  when (and (equal (cdr (assq 'imageType image)) "poster")
-		    (equal (cdr (assq 'h image)) max))
+	  when (equal (cdr (assq 'id image)) initial)
 	  return (cdr (assq 'src image)))))
 
 (defun imdb-get-image-json (url)

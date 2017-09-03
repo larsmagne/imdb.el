@@ -146,12 +146,17 @@
 		  (assq 'interstitialModel
 			(cadr (assq 'galleries
 				    (assq 'mediaviewer json))))))))
+	 ;; The default (and most "important") poster is named in a
+	 ;; string in the "aax" element.  *sigh*
 	 (initial (and (string-match "mediaviewer%2F\\([^%]+\\)" aax)
 		       (match-string 1 aax))))
     (loop for image across images
 	  when (equal (cdr (assq 'id image)) initial)
 	  return (cdr (assq 'src image)))))
 
+;; The images that IMDB displays for a movie are encoded in a
+;; Javascript array (which isn't valid JSON) inside some more JS.
+;; This will probably stop working when IMDB change...  whatever.
 (defun imdb-get-image-json (url)
   (with-current-buffer (url-retrieve-synchronously url)
     (goto-char (point-min))

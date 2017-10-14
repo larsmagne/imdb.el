@@ -34,7 +34,8 @@
 
 (defun imdb-get-data (title)
   (with-current-buffer (url-retrieve-synchronously
-			(format imdb-query-url title))
+			(format imdb-query-url
+				(replace-regexp-in-string "&" "%26" title)))
     (goto-char (point-min))
     (prog1
 	(when (re-search-forward "\n\n" nil t)

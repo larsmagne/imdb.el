@@ -30,7 +30,7 @@
 (require 'dom)
 (require 'json)
 
-(defvar imdb-query-url "http://www.imdb.com/xml/find?xml=1&nr=1&tt=on&q=%s")
+(defvar imdb-query-url "http://www.imdb.com/find?q=%s&s=tt&ref_=fn_al_tt_mr")
 
 (defun imdb-get-data (title)
   (with-current-buffer (url-retrieve-synchronously
@@ -39,48 +39,8 @@
     (goto-char (point-min))
     (prog1
 	(when (re-search-forward "\n\n" nil t)
-	  (libxml-parse-xml-region (point) (point-max)))
+	  (libxml-parse-html-region (point) (point-max)))
       (kill-buffer (current-buffer)))))
-
-(defun imdb-sort-results (dom)
-  (sort (dom-by-tag dom 'ImdbEntity)
-	(lambda (n1 n2)
-	  (< (imdb-rank dom n1) (imdb-rank dom n2)))))
-
-(defun imdb-filter-results (movies)
-  "Filter out all shorts and entries without a year."
-  (loop for movie in movies
-	for description = (dom-text (dom-by-tag movie 'Description))
-	when (and (not (string-match "\\bshort\\b" description))
-		  (string-match "^[0-9][0-9][0-9][0-9]" description))
-	collect movie))
-
-(defun imdb-rank (dom node)
-  (if (equal (dom-attr (dom-parent dom node) 'type) "title_exact")
-      1
-    2))
-
-(defun imdb-extract-data (results)
-  (loop for i from 0
-	for node in results
-	for data = (imdb-get-image-and-country (dom-attr node 'id))
-	while (< i 5)
-	collect (format
-		 "%s%s, %s, %s, %s, %s"
-		 (if (< i 5)
-		     (or (car data) "")
-		   "")
-		 (replace-regexp-in-string
-		  "[^0-9]+" ""
-		  (dom-text (dom-by-tag node 'Description)))
-		 (cadr data)
-		 (dom-attr node 'id)
-		 (let ((director (replace-regexp-in-string
-				  "," "" (dom-text (dom-by-tag node 'a)))))
-		   (if (zerop (length director))
-		       (caddr data)
-		     director))
-		 (dom-text node))))
 
 (defun imdb-get-image-and-country (id &optional image-only)
   (with-current-buffer (url-retrieve-synchronously
@@ -178,8 +138,7 @@
 
 (defun imdb-query-full (title)
   (loop for result in (imdb-extract-data
-		       (imdb-filter-results
-			(imdb-sort-results (imdb-get-data title))))
+		       (imdb-get-data title))
 	when (string-match
 	      " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)"
 	      result)
@@ -189,18 +148,39 @@
 		      :title (match-string 5 result)
 		      :id (match-string 3 result))))
 
+(defun imdb-extract-data (dom)
+  (loop for i from 0
+	for elem in (dom-by-class dom "findResult")
+	for links = (dom-by-tag elem 'a)
+	for id = (let ((href (dom-attr (car links) 'href)))
+		   (when (string-match "/title/\\([^/]+\\)" href)
+		     (match-string 1 href)))
+	while (< i 10)
+	for data = (imdb-get-image-and-country id)
+	for year = (let ((text (dom-texts elem)))
+		     (when (string-match "(\\([0-9][0-9][0-9][0-9]\\))" text)
+		       (match-string 1 text)))
+	collect (format
+		 "%s%s, %s, %s, %s, %s"
+		 (or (car data) "")
+		 year
+		 (cadr data)
+		 id
+		 (or (caddr data) "")
+		 (dom-text (cadr links))
+		 "")))
+
 (defun imdb-query (title)
   "Query IMDB for TITLE, and then prompt the user for the right match."
   (interactive "sTitle: ")
   (let* ((data (imdb-extract-data
-		(imdb-filter-results
-		 (imdb-sort-results (imdb-get-data title)))))
+		(imdb-get-data title)))
 	 (result (completing-read "Movie: " (cdr data) nil nil (car data))))
     (when (string-match " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)," result)
       (list :year (match-string 1 result)
-	    :director (match-string 4 result)
 	    :country (match-string 2 result)
-	    :id (match-string 3 result)))))
+	    :id (match-string 3 result)
+	    :director (match-string 4 result)))))
 
 (provide 'imdb)
 

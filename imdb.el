@@ -68,8 +68,7 @@
 				       when (and href
 						 (string-match "ref_=tt_ov_dr$"
 							       href))
-				       return (dom-text
-					       (dom-by-tag link 'span)))))))
+				       return (dom-texts link))))))
 	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-string (url)

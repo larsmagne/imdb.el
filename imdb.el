@@ -363,7 +363,6 @@
       (switch-to-buffer (format "*imdb %s*"
 				(car (gethash id imdb-data-people))))
       (let ((inhibit-read-only t))
-	(erase-buffer)
 	(imdb-mode)
 	(imdb-mode-display-person id))))))
 
@@ -388,6 +387,7 @@
 (defun imdb-mode-display-person (id)
   (let ((inhibit-read-only t)
 	films)
+    (erase-buffer)
     (setq imdb-mode-mode 'person
 	  imdb-mode-search id)
     (dolist (film (reverse (gethash id imdb-data-participated-in)))
@@ -395,21 +395,37 @@
 		    (gethash (car film) imdb-data-films)
 		    film)
 	    films))
-    (setq films (cl-sort films 'string<
+    (setq films (cl-sort (nreverse films) 'string<
 			 :key (lambda (e)
 				(nth 2 e))))
     (setq films (imdb-mode-filter films))
     (dolist (film films)
-      (insert (propertize (format "%4s  %s%s%s\n"
-				  (nth 2 film)
-				  (nth 1 film)
-				  (if (equal (nth 3 film) "movie")
-				      ""
-				    (format " (%s)" (nth 3 film)))
-				  (if (equal (nth 6 film) "\\N")
-				      ""
-				    (format " %s" (nth 6 film))))
-			  'id (car film))))
+      (insert (propertize
+	       (format "%s %s%s%s%s%s\n"
+		       (propertize (nth 2 film) 'face 'variable-pitch)
+		       (propertize " " 'display '(space :align-to 8))
+		       (propertize (nth 1 film) 'face 'variable-pitch)
+		       (if (equal (nth 3 film) "movie")
+			   ""
+			 (propertize (format " (%s)" (nth 3 film))
+				     'face '(variable-pitch
+					     (:foreground "#a0a0a0"))))
+		       (if (equal (nth 6 film) "\\N")
+			   ""
+			 (propertize (format " %s" (nth 6 film))
+				     'face '(variable-pitch
+					     (:foreground "#808080"))))
+		       (let ((director
+			      (loop for (pid job text) in
+				    (gethash (car film) imdb-data-participants)
+				    when (equal job "director")
+				    return (car (gethash pid imdb-data-people)))))
+			 (if (not director)
+			     ""
+			   (propertize (format " %s" director)
+				       'face '(variable-pitch
+					     (:foreground "#80a080"))))))
+	       'id (car film))))
     (goto-char (point-min))))
 
 (provide 'imdb)

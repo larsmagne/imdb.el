@@ -212,14 +212,17 @@
 
 (defvar imdb-data-people (make-hash-table :test #'equal))
 (defvar imdb-data-films (make-hash-table :test #'equal))
+(defvar imdb-data-participants (make-hash-table :test #'equal))
+(defvar imdb-data-participated-in (make-hash-table :test #'equal))
 
 (defun imdb-read-data ()
   (with-temp-buffer
     (insert-file-contents "~/.emacs.d/imdb/name.basics.tsv")
     (forward-line 1)
-    (while (re-search-forward "^\\([^\t]*\\)\t\\([^\t]*\\)" nil t)
+    (while (re-search-forward "^\\([^\t]*\\)\t\\([^\t]*\\)\t\\([^\t]*\\)" nil t)
       (setf (gethash (match-string 1) imdb-data-people)
-	    (match-string 2))))
+	    (list (match-string 2)
+		  (match-string 3)))))
   (with-temp-buffer
     (insert-file-contents "~/.emacs.d/imdb/title.basics.tsv")
     (forward-line 1)
@@ -229,14 +232,27 @@
 		  (if (equal (match-string 4) "\\N")
 		      "?"
 		    (match-string 4))
-		  (match-string 2))))))
+		  (match-string 2)))))
+  (with-temp-buffer
+    (insert-file-contents "~/.emacs.d/imdb/title.principals.tsv")
+    (forward-line 1)
+    (while (re-search-forward "^\\([^\t]*\\)\t[^\t]*\t\\([^\t]*\\)\t\\([^\t]*\\)\t[^\t]*\t\\([^\t\n]*\\)" nil t)
+      (push (list (match-string 2)
+		  (match-string 3)
+		  (match-string 4))
+	    (gethash (match-string 1) imdb-data-participants nil))
+      (push (list (match-string 1)
+		  (match-string 3)
+		  (match-string 4))
+	    (gethash (match-string 2) imdb-data-participated-in nil)))))
 
 (defvar imdb-mode-map
   (let ((map (make-keymap)))
     (set-keymap-parent map special-mode-map)
     (define-key map "f" 'imdb-mode-search-film)
     (define-key map "a" 'imdb-mode-search-actor)
-    (define-key map "i" 'imdb-mode-toggle-insignificant)
+    (define-key map "x" 'imdb-mode-toggle-insignificant)
+    (define-key map "\r" 'imdb-mode-select)
     map))
 
 (define-derived-mode imdb-mode special-mode "Imdb"
@@ -246,14 +262,14 @@
   (setq buffer-read-only t)
   (buffer-disable-undo)
   (setq-local imdb-mode-filter-insignificant nil)
-  (setq-local imdb-mode-mode 'film)
+  (setq-local imdb-mode-mode 'film-search)
   (setq-local imdb-mode-search nil)
   (setq truncate-lines t))
 
 (defun imdb-search (film)
   "Create a buffer to examine the imdb database."
   (interactive "sFilm: ")
-  (pop-to-buffer "*imdb*")
+  (switch-to-buffer "*imdb*")
   (let ((inhibit-read-only t))
     (erase-buffer)
     (imdb-mode)
@@ -277,8 +293,10 @@
 		     collect (get-text-property (point) 'id)
 		     do (forward-line 1)))))
   (cond
-   ((eq imdb-mode-mode 'film)
-    (imdb-mode-search-film imdb-mode-search)))
+   ((eq imdb-mode-mode 'film-search)
+    (imdb-mode-search-film imdb-mode-search))
+   ((eq imdb-mode-mode 'person)
+    (imdb-mode-display-person imdb-mode-search)))
   (if (not ids)
       (goto-char (point-max))
     (loop for id in ids
@@ -301,7 +319,7 @@
   (interactive "sFilm: ")
   (let ((films nil)
 	(inhibit-read-only t))
-    (setq imdb-mode-mode 'film
+    (setq imdb-mode-mode 'film-search
 	  imdb-mode-search film)
     (erase-buffer)
     (maphash
@@ -331,7 +349,69 @@
 	  when (and (not (equal (nth 2 film) "?"))
 		    (equal (nth 3 film) "movie"))
 	  collect film)))
-  
+
+(defun imdb-mode-select ()
+  "Select the item under point and display details."
+  (interactive)
+  (let ((id (get-text-property (point) 'id)))
+    (cond
+     ((or (eq imdb-mode-mode 'film-search)
+	  (eq imdb-mode-mode 'person-search)
+	  (eq imdb-mode-mode 'person))
+      (imdb-mode-display-film id))
+     (t
+      (switch-to-buffer (format "*imdb %s*"
+				(car (gethash id imdb-data-people))))
+      (let ((inhibit-read-only t))
+	(erase-buffer)
+	(imdb-mode)
+	(imdb-mode-display-person id))))))
+
+(defun imdb-mode-display-film (id)
+  (switch-to-buffer (format "*imdb %s*"
+			    (car (gethash id imdb-data-films))))
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (imdb-mode)
+    (setq imdb-mode-mode 'film)
+    (dolist (participant (reverse (gethash id imdb-data-participants)))
+      (insert (propertize (format "%s (%s)%s\n"
+				  (car (gethash (car participant)
+						imdb-data-people))
+				  (nth 1 participant)
+				  (if (equal (nth 2 participant) "\\N")
+				      ""
+				    (format " %s" (nth 2 participant))))
+			  'id (car participant))))
+    (goto-char (point-min))))
+
+(defun imdb-mode-display-person (id)
+  (let ((inhibit-read-only t)
+	films)
+    (setq imdb-mode-mode 'person
+	  imdb-mode-search id)
+    (dolist (film (reverse (gethash id imdb-data-participated-in)))
+      (push (append (list (car film))
+		    (gethash (car film) imdb-data-films)
+		    film)
+	    films))
+    (setq films (cl-sort films 'string<
+			 :key (lambda (e)
+				(nth 2 e))))
+    (setq films (imdb-mode-filter films))
+    (dolist (film films)
+      (insert (propertize (format "%4s  %s%s%s\n"
+				  (nth 2 film)
+				  (nth 1 film)
+				  (if (equal (nth 3 film) "movie")
+				      ""
+				    (format " (%s)" (nth 3 film)))
+				  (if (equal (nth 6 film) "\\N")
+				      ""
+				    (format " %s" (nth 6 film))))
+			  'id (car film))))
+    (goto-char (point-min))))
+
 (provide 'imdb)
 
 ;;; imdb.el ends here

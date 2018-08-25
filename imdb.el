@@ -181,6 +181,157 @@
 	    :id (match-string 3 result)
 	    :director (match-string 4 result)))))
 
+(defun imdb-download-data ()
+  (let ((dom
+	 (with-current-buffer (url-retrieve-synchronously "https://datasets.imdbws.com/")
+	   (goto-char (point-min))
+	   (search-forward "\n\n")
+	   (prog1
+	       (libxml-parse-html-region (point) (point-max))
+	     (kill-buffer (current-buffer))))))
+    (loop for elem in (dom-by-tag dom 'a)
+	  for url = (dom-attr elem 'href)
+	  when (string-match "[.]gz\\'" url)
+	  do (imdb-download-data-1 url))))
+
+(defun imdb-download-data-1 (url)
+  (with-current-buffer (url-retrieve-synchronously url)
+    (goto-char (point-min))
+    (search-forward "\n\n")
+    (zlib-decompress-region (point) (point-max))
+    (let ((file (expand-file-name (replace-regexp-in-string
+				   "[.]gz\\'" ""
+				   (file-name-nondirectory
+				    (url-filename
+				     (url-generic-parse-url url))))
+				  "~/.emacs.d/imdb")))
+      (unless (file-exists-p (file-name-directory file))
+	(make-directory (file-name-directory file) t))
+      (write-region (point) (point-max) file))
+    (kill-buffer (current-buffer))))
+
+(defvar imdb-data-people (make-hash-table :test #'equal))
+(defvar imdb-data-films (make-hash-table :test #'equal))
+
+(defun imdb-read-data ()
+  (with-temp-buffer
+    (insert-file-contents "~/.emacs.d/imdb/name.basics.tsv")
+    (forward-line 1)
+    (while (re-search-forward "^\\([^\t]*\\)\t\\([^\t]*\\)" nil t)
+      (setf (gethash (match-string 1) imdb-data-people)
+	    (match-string 2))))
+  (with-temp-buffer
+    (insert-file-contents "~/.emacs.d/imdb/title.basics.tsv")
+    (forward-line 1)
+    (while (re-search-forward "^\\([^\t]*\\)\t\\([^\t]*\\)\t\\([^\t]*\\)\t[^\t]*\t[^\t]*\t\\([^\t]*\\)\t" nil t)
+      (setf (gethash (match-string 1) imdb-data-films)
+	    (list (match-string 3)
+		  (if (equal (match-string 4) "\\N")
+		      "?"
+		    (match-string 4))
+		  (match-string 2))))))
+
+(defvar imdb-mode-map
+  (let ((map (make-keymap)))
+    (set-keymap-parent map special-mode-map)
+    (define-key map "f" 'imdb-mode-search-film)
+    (define-key map "a" 'imdb-mode-search-actor)
+    (define-key map "i" 'imdb-mode-toggle-insignificant)
+    map))
+
+(define-derived-mode imdb-mode special-mode "Imdb"
+  "Major mode for examining the imdb database.
+
+\\{imdb-mode-map}"
+  (setq buffer-read-only t)
+  (buffer-disable-undo)
+  (setq-local imdb-mode-filter-insignificant nil)
+  (setq-local imdb-mode-mode 'film)
+  (setq-local imdb-mode-search nil)
+  (setq truncate-lines t))
+
+(defun imdb-search (film)
+  "Create a buffer to examine the imdb database."
+  (interactive "sFilm: ")
+  (pop-to-buffer "*imdb*")
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (imdb-mode)
+    (imdb-mode-search-film film)))
+
+(defun imdb-mode-toggle-insignificant ()
+  "Toggle whether to list proper films only."
+  (interactive)
+  (setq imdb-mode-filter-insignificant
+	(not imdb-mode-filter-insignificant))
+  (message "Unimportant items are now %s"
+	   (if imdb-mode-filter-insignificant
+	       "filtered"
+	     "not filtered"))
+  (imdb-mode-refresh-buffer))
+
+(defun imdb-mode-refresh-buffer ()
+  (let ((ids (save-excursion
+	       (loop repeat 20
+		     while (not (eobp))
+		     collect (get-text-property (point) 'id)
+		     do (forward-line 1)))))
+  (cond
+   ((eq imdb-mode-mode 'film)
+    (imdb-mode-search-film imdb-mode-search)))
+  (if (not ids)
+      (goto-char (point-max))
+    (loop for id in ids
+	  while (not (imdb-mode-goto-id id))))))
+
+(defun imdb-mode-goto-id (id)
+  (let ((start (point))
+	match)
+    (goto-char (point-min))
+    (if (setq match (text-property-search-forward 'id id t))
+	(progn
+	  (goto-char (prop-match-beginning match))
+	  (beginning-of-line)
+	  t)
+      (goto-char start)
+      nil)))
+
+(defun imdb-mode-search-film (film)
+  "List films matching FILM."
+  (interactive "sFilm: ")
+  (let ((films nil)
+	(inhibit-read-only t))
+    (setq imdb-mode-mode 'film
+	  imdb-mode-search film)
+    (erase-buffer)
+    (maphash
+     (lambda (key value)
+       (when (string-match film (car value))
+	 (push (cons key value) films)))
+     imdb-data-films)
+    (setq films (imdb-mode-filter films))
+    (unless films
+      (error "No films match %S" film))
+    (dolist (film (cl-sort films 'string<
+			   :key (lambda (e)
+				  (nth 2 e))))
+      (insert (propertize (format "%04s  %s%s\n"
+				  (nth 2 film)
+				  (nth 1 film)
+				  (if (equal (nth 3 film) "movie")
+				      ""
+				    (format " (%s)" (nth 3 film))))
+			  'id (car film))))
+    (goto-char (point-min))))
+
+(defun imdb-mode-filter (films)
+  (if (not imdb-mode-filter-insignificant)
+      films
+    (loop for film in films
+	  when (and (not (equal (nth 2 film) "?"))
+		    (equal (nth 3 film) "movie"))
+	  collect film)))
+  
 (provide 'imdb)
 
 ;;; imdb.el ends here

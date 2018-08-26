@@ -640,7 +640,9 @@
 		     'face '(variable-pitch (:foreground "#a0a0f0"))))))
 	       'id (getf person :pid))))
     (goto-char (point-min))
-    (forward-line 1)))
+    (forward-line 1))
+  ;(imdb-get-actors id)
+  )
 
 (defun imdb-mode-display-person (id)
   (let ((inhibit-read-only t)
@@ -708,13 +710,14 @@
    t))
 
 (defun imdb-update-image-1 (url buffer)
-  (url-retrieve
-   url
-   (lambda (status buffer)
-     (goto-char (point-min))
-     (imdb-update-image-2 (imdb-extract-image-json) buffer)
-     (kill-buffer (current-buffer)))
-   (list buffer) t))
+  (when url
+    (url-retrieve
+     url
+     (lambda (status buffer)
+       (goto-char (point-min))
+       (imdb-update-image-2 (imdb-extract-image-json) buffer)
+       (kill-buffer (current-buffer)))
+     (list buffer) t)))
 
 (defun imdb-update-image-2 (json buffer)
   (let ((src (imdb-get-image-from-json json)))

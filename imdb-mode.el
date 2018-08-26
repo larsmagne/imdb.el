@@ -661,34 +661,35 @@
     (setq films (imdb-mode-filter films))
     (dolist (film films)
       (unless (equal (getf film :type) "tvEpisode") 
-	(insert (propertize
-		 (format "%s %s%s%s%s%s\n"
-			 (propertize
-			  (format "%s" (or (getf film :start-year) ""))
-			  'face 'variable-pitch)
-			 (propertize " " 'display '(space :align-to 8))
-			 (propertize (getf film :primary-title)
-				     'face 'variable-pitch)
-			 (if (equal (getf film :type) "movie")
-			     ""
-			   (propertize (format " (%s)" (getf film :type))
-				       'face '(variable-pitch
-					       (:foreground "#a0a0a0"))))
-			 (propertize (format " (%s)" (getf film :category))
-				     'face '(variable-pitch
-					     (:foreground "#c0c0c0")))
-			 (let ((directors
-				(imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
-						   (getf film :mid))))
-			   (if (not directors)
-			       ""
-			     (propertize
-			      (concat " " (mapconcat (lambda (e)
-						       (getf e :primary-name))
-						     directors ", "))
+	(insert
+	 (propertize
+	  (format "%s %s%s%s%s%s\n"
+		  (propertize
+		   (format "%s" (or (getf film :start-year) ""))
+		   'face 'variable-pitch)
+		  (propertize " " 'display '(space :align-to 8))
+		  (propertize (getf film :primary-title)
+			      'face 'variable-pitch)
+		  (if (equal (getf film :type) "movie")
+		      ""
+		    (propertize (format " (%s)" (getf film :type))
+				'face '(variable-pitch
+					(:foreground "#a0a0a0"))))
+		  (propertize (format " (%s)" (getf film :category))
 			      'face '(variable-pitch
-				      (:foreground "#80a080"))))))
-		 'id (getf film :mid)))))
+				      (:foreground "#c0c0c0")))
+		  (let ((directors
+			 (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
+					    (getf film :mid))))
+		    (if (not directors)
+			""
+		      (propertize
+		       (concat " " (mapconcat (lambda (e)
+						(getf e :primary-name))
+					      directors ", "))
+		       'face '(variable-pitch
+			       (:foreground "#80a080"))))))
+	  'id (getf film :mid)))))
     (goto-char (point-min))))
 
 (defun imdb-update-image (id)

@@ -250,7 +250,7 @@
   (let ((map (make-keymap)))
     (set-keymap-parent map special-mode-map)
     (define-key map "f" 'imdb-mode-search-film)
-    (define-key map "a" 'imdb-mode-search-actor)
+    (define-key map "p" 'imdb-mode-search-person)
     (define-key map "x" 'imdb-mode-toggle-insignificant)
     (define-key map "\r" 'imdb-mode-select)
     map))
@@ -333,13 +333,55 @@
     (dolist (film (cl-sort films 'string<
 			   :key (lambda (e)
 				  (nth 2 e))))
-      (insert (propertize (format "%04s  %s%s\n"
-				  (nth 2 film)
-				  (nth 1 film)
-				  (if (equal (nth 3 film) "movie")
-				      ""
-				    (format " (%s)" (nth 3 film))))
-			  'id (car film))))
+      (insert
+       (propertize
+	(format "%s %s%s%s\n"
+		(propertize (nth 2 film) 'face 'variable-pitch)
+		(propertize " " 'display '(space :align-to 8))
+		(propertize (nth 1 film) 'face 'variable-pitch)
+		(if (equal (nth 3 film) "movie")
+		    ""
+		  (propertize (format " (%s)" (nth 3 film))
+			      'face '(variable-pitch
+				      (:foreground "#80a080")))))
+	'id (car film))))
+    (goto-char (point-min))))
+
+(defun imdb-mode-search-person (person)
+  "List films matching PERSON."
+  (interactive "sPerson: ")
+  (let ((films nil)
+	(inhibit-read-only t))
+    (setq imdb-mode-mode 'people-search
+	  imdb-mode-search person)
+    (erase-buffer)
+    (maphash
+     (lambda (key value)
+       (when (string-match person (car value))
+	 (dolist (film (gethash key imdb-data-participated-in))
+	   (push (append (cons (car film) (gethash (car film) imdb-data-films))
+			 value)
+		 films))))
+     imdb-data-people)
+    (setq films (imdb-mode-filter films))
+    (unless films
+      (error "No films match %S" person))
+    (dolist (film (cl-sort films 'string<
+			   :key (lambda (e)
+				  (nth 2 e))))
+      (insert
+       (propertize
+	(format "%s %s%s%s %s\n"
+		(propertize (nth 2 film) 'face 'variable-pitch)
+		(propertize " " 'display '(space :align-to 8))
+		(propertize (nth 1 film) 'face 'variable-pitch)
+		(if (equal (nth 3 film) "movie")
+		    ""
+		  (propertize (format " (%s)" (nth 3 film))
+			      'face '(variable-pitch
+				      (:foreground "#80a080"))))
+		(nth 4 film))
+	'id (car film))))
     (goto-char (point-min))))
 
 (defun imdb-mode-filter (films)
@@ -356,7 +398,7 @@
   (let ((id (get-text-property (point) 'id)))
     (cond
      ((or (eq imdb-mode-mode 'film-search)
-	  (eq imdb-mode-mode 'person-search)
+	  (eq imdb-mode-mode 'people-search)
 	  (eq imdb-mode-mode 'person))
       (imdb-mode-display-film id))
      (t
@@ -373,15 +415,31 @@
     (erase-buffer)
     (imdb-mode)
     (setq imdb-mode-mode 'film)
-    (dolist (participant (reverse (gethash id imdb-data-participants)))
-      (insert (propertize (format "%s (%s)%s\n"
-				  (car (gethash (car participant)
-						imdb-data-people))
-				  (nth 1 participant)
-				  (if (equal (nth 2 participant) "\\N")
-				      ""
-				    (format " %s" (nth 2 participant))))
-			  'id (car participant))))
+    (dolist (participant (cl-sort
+			  (reverse (gethash id imdb-data-participants)) '<
+			  :key (lambda (e)
+				 (let ((job (nth 1 e)))
+				   (cond
+				    ((equal job "director") 1)
+				    ((equal job "actor") 2)
+				    ((equal job "actress") 2)
+				    ((equal job "writer") 4)
+				    (t 5))))))
+      (insert (propertize
+	       (format
+		"%s %s%s\n"
+		(propertize
+		 (car (gethash (car participant) imdb-data-people))
+		 'face 'variable-pitch)
+		(propertize
+		 (format "(%s)" (nth 1 participant))
+		 'face '(variable-pitch (:foreground "#c0c0c0")))
+		(if (equal (nth 2 participant) "\\N")
+		    ""
+		  (propertize
+		   (format " %s" (nth 2 participant))
+		   'face '(variable-pitch (:foreground "#808080")))))
+	       'id (car participant))))
     (goto-char (point-min))))
 
 (defun imdb-mode-display-person (id)
@@ -400,32 +458,36 @@
 				(nth 2 e))))
     (setq films (imdb-mode-filter films))
     (dolist (film films)
-      (insert (propertize
-	       (format "%s %s%s%s%s%s\n"
-		       (propertize (nth 2 film) 'face 'variable-pitch)
-		       (propertize " " 'display '(space :align-to 8))
-		       (propertize (nth 1 film) 'face 'variable-pitch)
-		       (if (equal (nth 3 film) "movie")
-			   ""
-			 (propertize (format " (%s)" (nth 3 film))
-				     'face '(variable-pitch
-					     (:foreground "#a0a0a0"))))
-		       (if (equal (nth 6 film) "\\N")
-			   ""
-			 (propertize (format " %s" (nth 6 film))
-				     'face '(variable-pitch
-					     (:foreground "#808080"))))
-		       (let ((director
-			      (loop for (pid job text) in
-				    (gethash (car film) imdb-data-participants)
-				    when (equal job "director")
-				    return (car (gethash pid imdb-data-people)))))
-			 (if (not director)
+      (unless (equal (nth 3 film) "tvEpisode") 
+	(insert (propertize
+		 (format "%s %s%s%s%s%s%s\n"
+			 (propertize (nth 2 film) 'face 'variable-pitch)
+			 (propertize " " 'display '(space :align-to 8))
+			 (propertize (nth 1 film) 'face 'variable-pitch)
+			 (if (equal (nth 3 film) "movie")
 			     ""
-			   (propertize (format " %s" director)
+			   (propertize (format " (%s)" (nth 3 film))
 				       'face '(variable-pitch
-					     (:foreground "#80a080"))))))
-	       'id (car film))))
+					       (:foreground "#a0a0a0"))))
+			 (propertize (format " (%s)" (nth 5 film))
+				     'face '(variable-pitch
+					     (:foreground "#c0c0c0")))
+			 (if (equal (nth 6 film) "\\N")
+			     ""
+			   (propertize (format " %s" (nth 6 film))
+				       'face '(variable-pitch
+					       (:foreground "#808080"))))
+			 (let ((director
+				(loop for (pid job text) in
+				      (gethash (car film) imdb-data-participants)
+				      when (equal job "director")
+				      return (car (gethash pid imdb-data-people)))))
+			   (if (not director)
+			       ""
+			     (propertize (format " %s" director)
+					 'face '(variable-pitch
+						 (:foreground "#80a080"))))))
+		 'id (car film)))))
     (goto-char (point-min))))
 
 (provide 'imdb)

@@ -28,41 +28,78 @@
 (require 'imdb)
 (require 'sqlite3)
 
-(defvar imdb-data-people (make-hash-table :test #'equal))
-(defvar imdb-data-films (make-hash-table :test #'equal))
-(defvar imdb-data-participants (make-hash-table :test #'equal))
-(defvar imdb-data-participated-in (make-hash-table :test #'equal))
-
 (defvar imdb-db nil)
 
 (defvar imdb-tables
-  '((person
-     (pid text :primary)
-     (primary-name text)
-     (birth-year integer)
-     (death-year integer))
-    (movie
+  '((movie
      (mid text :primary)
      (type text)
      (primary-title text)
      (original-title text)
-     (adultp text)
+     (adultp bool)
      (start-year integer)
      (end-year integer)
      (length integer))
+    (movie-genre
+     (mid text :references movie)
+     (genre text))
+    
+    (person
+     (pid text :primary)
+     (primary-name text)
+     (birth-year integer)
+     (death-year integer))
     (person-primary-profession
      (pid text :references person)
      (profession text))
     (person-known-for
      (pid text :references person)
      (mid text :references movie))
-    (movie-genre
+
+    (title
      (mid text :references movie)
-     (genre text))
+     (rank integer)
+     (title text)
+     (region text)
+     (language text)
+     (types text)
+     (attributes text)
+     (originalp bool))
+
+    (crew
+     (mid text :references movie)
+     (pid text :references person)
+     (category text))
+     
+    (episode
+     (mid text :primary :references movie)
+     (movie text :references movie)
+     (season integer)
+     (episode integer))
+
+    (rating
+     (mid text :primary :references movie)
+     (rating number)
+     (votes integer))
+
+    (principal
+     (mid text :references movie)
+     (rank integer)
+     (pid text :references person)
+     (category text)
+     (job text))
+
+    (principal-character
+     (mid text :references movie)
+     (pid text :references person)
+     (character text))    
     ))
 
 (defun imdb-dehyphenate (elem)
   (replace-regexp-in-string "-" "_" (symbol-name elem)))
+
+(defun imdb-hyphenate (elem)
+  (replace-regexp-in-string "_" "-" elem))
 
 (defun imdb-create-tables ()
   (unless imdb-db
@@ -78,7 +115,9 @@
 			    collect (format
 				     "%s %s%s%s"
 				     (imdb-dehyphenate (car elem))
-				     (cadr elem)
+				     (if (equal (cadr elem) 'bool)
+					 "text"
+				       (cadr elem))
 				     (if (memq :primary elem)
 					 " primary key"
 				       "")
@@ -88,7 +127,22 @@
 					   (format " references %s"
 						   references)
 					 ""))))
-		      ", ")))))
+		      ", "))))
+
+  (sqlite3-execute-batch
+   imdb-db "create index if not exists pcidx on principal_character(mid, pid)")
+  (sqlite3-execute-batch
+   imdb-db "create index if not exists mgidx on movie_genre(mid)")
+  (sqlite3-execute-batch
+   imdb-db "create index if not exists pppidx on person_primary_profession(pid)")
+  (sqlite3-execute-batch
+   imdb-db "create index if not exists pkfidx on person_known_for(pid)")
+  (sqlite3-execute-batch imdb-db "create index if not exists tidx on title(mid)")
+  (sqlite3-execute-batch imdb-db "create index if not exists cidx on crew(mid, pid)")
+  (sqlite3-execute-batch imdb-db "create index if not exists eidx on episode(movie)")
+  (sqlite3-execute-batch imdb-db "create index if not exists pidx on principal(mid, pid)")
+  (sqlite3-execute-batch imdb-db "create index if not exists ppidx on principal(pid)")
+  )
 
 (defun imdb-read-line ()
   (loop for elem in (split-string
@@ -101,19 +155,126 @@
 (defun imdb-read-data ()
   (with-temp-buffer
     (sqlite3-execute-batch imdb-db "delete from movie")
+    (sqlite3-transaction imdb-db)
     (insert-file-contents "~/.emacs.d/imdb/title.basics.tsv")
     (forward-line 1)
-    (while (not (eobp))
-      (let* ((elem (imdb-read-line))
-	     (object (imdb-make 'movie elem)))
-	(imdb-insert object)
-	(loop for genre in (split-string (car (last elem)) ",")
-	      do (imdb-insert (imdb-make 'movie-genre
-					 (list (car elem) genre)))))
-      (forward-line 1))))
+    (let ((lines 1)
+	  (total (count-lines (point-min) (point-max))))
+      (while (not (eobp))
+	(when (zerop (% (incf lines) 1000))
+	  (message "Read %d lines (%.1f%%)" lines
+		   (* (/ (* lines 1.0) total) 100)))
+	(let* ((elem (imdb-read-line))
+	       (object (imdb-make 'movie elem)))
+	  (imdb-insert object)
+	  (when (car (last elem))
+	    (loop for genre in (split-string (car (last elem)) ",")
+		  do (imdb-insert (imdb-make 'movie-genre
+					     (list (car elem) genre))))))
+	(forward-line 1)))
+    (sqlite3-commit imdb-db))
+
+  (with-temp-buffer
+    (sqlite3-execute-batch imdb-db "delete from person")
+    (sqlite3-transaction imdb-db)
+    (insert-file-contents "~/.emacs.d/imdb/name.basics.tsv")
+    (forward-line 1)
+    (let ((lines 1)
+	  (total (count-lines (point-min) (point-max))))
+      (while (not (eobp))
+	(when (zerop (% (incf lines) 1000))
+	  (message "Read %d lines (%.1f%%)" lines
+		   (* (/ (* lines 1.0) total) 100)))
+	(let* ((elem (imdb-read-line))
+	       (object (imdb-make 'person elem)))
+	  (imdb-insert object)
+	  (let ((professions (car (last elem 2)))
+		(known (car (last elem))))
+	    (when professions
+	      (loop for profession in (split-string professions ",")
+		    do (imdb-insert (imdb-make 'person-primary-profession
+					       (list (car elem) profession)))))
+	    (when known
+	      (loop for k in (split-string known ",")
+		    do (imdb-insert (imdb-make 'person-known-for
+					       (list (car elem) k))))))
+	  (forward-line 1)))
+      (sqlite3-commit imdb-db)))
+
+  (imdb-read-general 'title "title.akas")
+  
+  (with-temp-buffer
+    (sqlite3-execute-batch imdb-db "delete from crew")
+    (sqlite3-transaction imdb-db)
+    (insert-file-contents "~/.emacs.d/imdb/title.crew.tsv")
+    (forward-line 1)
+    (let ((lines 1)
+	  (total (count-lines (point-min) (point-max))))
+      (while (not (eobp))
+	(when (zerop (% (incf lines) 1000))
+	  (message "Read %d lines (%.1f%%)" lines
+		   (* (/ (* lines 1.0) total) 100)))
+	(let* ((elem (imdb-read-line))
+	       (directors (cadr elem))
+	       (writers (caddr elem)))
+	  (when directors
+	    (dolist (mid (split-string directors ","))
+	      (imdb-insert (imdb-make 'crew (list (car elem) mid "director")))))
+	  (when writers
+	    (dolist (mid (split-string writers ","))
+	      (imdb-insert (imdb-make 'crew (list (car elem) mid "writer")))))
+	  (forward-line 1)))
+      (sqlite3-commit imdb-db)))
+
+  (imdb-read-general 'episode "title.episode")
+  (imdb-read-general 'rating "title.ratings")
+
+  (with-temp-buffer
+    (sqlite3-execute-batch imdb-db "delete from principal")
+    (sqlite3-transaction imdb-db)
+    (insert-file-contents "~/.emacs.d/imdb/title.principals.tsv")
+    (forward-line 1)
+    (let ((lines 1)
+	  (total (count-lines (point-min) (point-max))))
+      (while (not (eobp))
+	(when (zerop (% (incf lines) 1000))
+	  (message "Read %d lines (%.1f%%)" lines
+		   (* (/ (* lines 1.0) total) 100)))
+	(let* ((elem (imdb-read-line))
+	       (object (imdb-make 'principal elem)))
+	  (imdb-insert object)
+	  (when (car (last elem))
+	    (with-temp-buffer
+	      (insert (car (last elem)))
+	      (goto-char (point-min))
+	      (loop for character across (json-read)
+		    do (imdb-insert (imdb-make 'principal-character
+					       (list (getf object :mid)
+						     (getf object :pid)
+						     character))))))
+	  (forward-line 1)))
+      (sqlite3-commit imdb-db))))
+
+(defun imdb-read-general (table file)
+  (with-temp-buffer
+    (sqlite3-execute-batch imdb-db (format "delete from %s" table))
+    (sqlite3-transaction imdb-db)
+    (insert-file-contents (format "~/.emacs.d/imdb/%s.tsv" file))
+    (forward-line 1)
+    (let ((lines 1)
+	  (total (count-lines (point-min) (point-max))))
+      (while (not (eobp))
+	(when (zerop (% (incf lines) 1000))
+	  (message "Read %d lines (%.1f%%)" lines
+		   (* (/ (* lines 1.0) total) 100)))
+	(let* ((elem (imdb-read-line))
+	       (object (imdb-make table elem)))
+	  (imdb-insert object)
+	  (forward-line 1)))
+      (sqlite3-commit imdb-db))))
 
 (defun imdb-make (table values)
-  (nconc (list :type table)
+  (nconc (list :_type table)
 	 (loop for column in (cdr (assq table imdb-tables))
 	       for value in values
 	       for type = (cadr column)
@@ -124,6 +285,10 @@
 				       (eq type 'number)
 				       (eq type 'real)))
 			      (string-to-number value))
+			     ((eq type 'bool)
+			      (if (equal value "0")
+				  "N"
+				"Y"))
 			     (t
 			      value))))))
 
@@ -134,24 +299,77 @@
 (defun imdb-column-name (column)
   (replace-regexp-in-string ":" "" (imdb-dehyphenate column)))
 
+(defvar imdb-db-test nil)
+
 (defun imdb-insert (object)
-  (imdb-exec
-   (format "insert into %s(%s) values(%s)"
-	   (imdb-dehyphenate (getf object :type))
-	   (mapconcat
-	    #'identity
-	    (loop for (column nil) on (cddr object) by #'cddr
-		  collect (imdb-column-name column))
-	    ",")
-	   (mapconcat
-	    #'identity
-	    (loop repeat (/ (length (cddr object)) 2)
-		  collect "?")
-	    ","))
-   (coerce
-    (loop for (nil value) on (cddr object) by #'cddr
-	  collect value)
-    'vector)))
+  (unless imdb-db-test
+    (imdb-exec
+     (format "insert into %s(%s) values(%s)"
+	     (imdb-dehyphenate (getf object :_type))
+	     (mapconcat
+	      #'identity
+	      (loop for (column nil) on (cddr object) by #'cddr
+		    collect (imdb-column-name column))
+	      ",")
+	     (mapconcat
+	      #'identity
+	      (loop repeat (/ (length (cddr object)) 2)
+		    collect "?")
+	      ","))
+     (coerce
+      (loop for (nil value) on (cddr object) by #'cddr
+	    collect value)
+      'vector))))
+
+(defun imdb-select (table &rest values)
+  (apply 'imdb-find table (loop for (key val) on values by #'cddr
+				append (list key '= val))))
+
+
+(defun imdb-select-where (statement &rest values)
+  (let ((result nil))
+    (sqlite3-execute
+     imdb-db
+     statement
+     (coerce values 'vector)
+     (lambda (row names)
+       (push (nconc (loop for value in row
+			  for column in names
+			  append (list
+				  (intern (format ":%s" (imdb-hyphenate column))
+					  obarray)
+				  value)))
+	     result)))
+    (nreverse result)))
+
+(defun imdb-find (table &rest values)
+  (let ((result nil))
+    (sqlite3-execute
+     imdb-db
+     (format
+      "select * from %s where %s"
+      (imdb-dehyphenate table)
+      (mapconcat
+       #'identity
+       (loop for (column predicate nil) on values by #'cdddr
+	     collect (format "%s %s ?"
+			     (imdb-column-name column)
+			     predicate))
+       " and "))
+     (coerce
+      (loop for (nil nil value) on values by #'cdddr
+	    collect value)
+      'vector)
+     (lambda (row names)
+       (push (nconc (list :_type table)
+		    (loop for value in row
+			  for column in names
+			  append (list
+				  (intern (format ":%s" (imdb-hyphenate column))
+					  obarray)
+				  value)))
+	     result)))
+    (nreverse result)))
 
 (defvar imdb-mode-map
   (let ((map (make-keymap)))
@@ -224,34 +442,33 @@
 (defun imdb-mode-search-film (film)
   "List films matching FILM."
   (interactive "sFilm: ")
-  (let ((films nil)
+  (let ((films (imdb-select-where
+		"select * from movie where lower(primary_title) like ?"
+		(format "%%%s%%" film)))
 	(inhibit-read-only t))
     (setq imdb-mode-mode 'film-search
 	  imdb-mode-search film)
     (erase-buffer)
-    (maphash
-     (lambda (key value)
-       (when (string-match film (car value))
-	 (push (cons key value) films)))
-     imdb-data-films)
     (setq films (imdb-mode-filter films))
     (unless films
       (error "No films match %S" film))
-    (dolist (film (cl-sort films 'string<
+    (dolist (film (cl-sort films '<
 			   :key (lambda (e)
-				  (nth 2 e))))
+				  (or (getf e :start-year)
+				      most-positive-fixnum))))
       (insert
        (propertize
 	(format "%s %s%s%s\n"
-		(propertize (nth 2 film) 'face 'variable-pitch)
+		(propertize (format "%s" (getf film :start-year))
+			    'face 'variable-pitch)
 		(propertize " " 'display '(space :align-to 8))
-		(propertize (nth 1 film) 'face 'variable-pitch)
-		(if (equal (nth 3 film) "movie")
+		(propertize (getf film :primary-title) 'face 'variable-pitch)
+		(if (equal (getf film :type) "movie")
 		    ""
-		  (propertize (format " (%s)" (nth 3 film))
+		  (propertize (format " (%s)" (getf film :type))
 			      'face '(variable-pitch
 				      (:foreground "#80a080")))))
-	'id (car film))))
+	'id (getf film :mid))))
     (goto-char (point-min))))
 
 (defun imdb-mode-search-person (person)
@@ -295,14 +512,16 @@
   (if (not imdb-mode-filter-insignificant)
       films
     (loop for film in films
-	  when (and (not (equal (nth 2 film) "?"))
-		    (equal (nth 3 film) "movie"))
+	  when (and (getf film :start-year)
+		    (equal (getf film :type) "movie"))
 	  collect film)))
 
 (defun imdb-mode-select ()
   "Select the item under point and display details."
   (interactive)
   (let ((id (get-text-property (point) 'id)))
+    (unless id
+      (error "Nothing under point"))
     (cond
      ((or (eq imdb-mode-mode 'film-search)
 	  (eq imdb-mode-mode 'people-search)
@@ -310,91 +529,113 @@
       (imdb-mode-display-film id))
      (t
       (switch-to-buffer (format "*imdb %s*"
-				(car (gethash id imdb-data-people))))
+				(getf (car (imdb-select 'person :pid id))
+				      :primary-name)))
       (let ((inhibit-read-only t))
 	(imdb-mode)
 	(imdb-mode-display-person id))))))
 
 (defun imdb-mode-display-film (id)
   (switch-to-buffer (format "*imdb %s*"
-			    (car (gethash id imdb-data-films))))
+			    (getf (car (imdb-select 'movie :mid id))
+				  :primary-title)))
   (let ((inhibit-read-only t))
     (erase-buffer)
     (imdb-mode)
     (setq imdb-mode-mode 'film)
-    (dolist (participant (cl-sort
-			  (reverse (gethash id imdb-data-participants)) '<
-			  :key (lambda (e)
-				 (let ((job (nth 1 e)))
-				   (cond
-				    ((equal job "director") 1)
-				    ((equal job "actor") 2)
-				    ((equal job "actress") 2)
-				    ((equal job "writer") 4)
-				    (t 5))))))
+    (let ((directors
+	   (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
+			      id)))
+      (insert
+       (if (not directors)
+	   ""
+	 (concat
+	  (propertize "Directed by " 'face 'variable-pitch)
+	  (propertize (mapconcat (lambda (e)
+				   (getf e :primary-name))
+				 directors ", ")
+		      'face '(variable-pitch
+			      (:foreground "#f0f0f0"
+					   :weight bold)))))
+       "\n\n"))
+    
+    (dolist (person (cl-sort
+		     (imdb-select 'principal :mid id) '<
+		     :key (lambda (e)
+			    (let ((job (getf e :category)))
+			      (cond
+			       ((equal job "director") 1)
+			       ((equal job "actor") 2)
+			       ((equal job "actress") 2)
+			       ((equal job "writer") 4)
+			       (t 5))))))
       (insert (propertize
 	       (format
 		"%s %s%s\n"
 		(propertize
-		 (car (gethash (car participant) imdb-data-people))
+		 (getf (car (imdb-select 'person :pid (getf person :pid)))
+		       :primary-name)
 		 'face 'variable-pitch)
 		(propertize
-		 (format "(%s)" (nth 1 participant))
+		 (format "(%s)" (getf person :category))
 		 'face '(variable-pitch (:foreground "#c0c0c0")))
-		(if (equal (nth 2 participant) "\\N")
-		    ""
-		  (propertize
-		   (format " %s" (nth 2 participant))
-		   'face '(variable-pitch (:foreground "#808080")))))
-	       'id (car participant))))
+		(let ((characters (imdb-select 'principal-character
+					       :mid id
+					       :pid (getf person :pid))))
+		  (if (not characters)
+		      ""
+		    (propertize
+		     (concat
+		      " "
+		      (mapconcat
+		       (lambda (e)
+			 (format "%S" (getf e :character)))
+		       characters ", "))))))
+	       'id (getf person :pid))))
     (goto-char (point-min))))
 
 (defun imdb-mode-display-person (id)
   (let ((inhibit-read-only t)
-	films)
+	(films (imdb-select-where
+		"select movie.mid, primary_title, start_year, type, principal.category from movie inner join principal on movie.mid = principal.mid where pid = ?"
+		id)))
     (erase-buffer)
     (setq imdb-mode-mode 'person
 	  imdb-mode-search id)
-    (dolist (film (reverse (gethash id imdb-data-participated-in)))
-      (push (append (list (car film))
-		    (gethash (car film) imdb-data-films)
-		    film)
-	    films))
-    (setq films (cl-sort (nreverse films) 'string<
-			 :key (lambda (e)
-				(nth 2 e))))
+    (setq films (cl-sort
+		 (nreverse films) '<
+		 :key (lambda (e)
+			(or (getf e :start-year) most-positive-fixnum))))
     (setq films (imdb-mode-filter films))
     (dolist (film films)
-      (unless (equal (nth 3 film) "tvEpisode") 
+      (unless (equal (getf film :type) "tvEpisode") 
 	(insert (propertize
-		 (format "%s %s%s%s%s%s%s\n"
-			 (propertize (nth 2 film) 'face 'variable-pitch)
+		 (format "%s %s%s%s%s%s\n"
+			 (propertize (format "%s" (getf film :start-year))
+				     'face 'variable-pitch)
 			 (propertize " " 'display '(space :align-to 8))
-			 (propertize (nth 1 film) 'face 'variable-pitch)
-			 (if (equal (nth 3 film) "movie")
+			 (propertize (getf film :primary-title)
+				     'face 'variable-pitch)
+			 (if (equal (getf film :type) "movie")
 			     ""
-			   (propertize (format " (%s)" (nth 3 film))
+			   (propertize (format " (%s)" (getf film :type))
 				       'face '(variable-pitch
 					       (:foreground "#a0a0a0"))))
-			 (propertize (format " (%s)" (nth 5 film))
+			 (propertize (format " (%s)" (getf film :category))
 				     'face '(variable-pitch
 					     (:foreground "#c0c0c0")))
-			 (if (equal (nth 6 film) "\\N")
-			     ""
-			   (propertize (format " %s" (nth 6 film))
-				       'face '(variable-pitch
-					       (:foreground "#808080"))))
-			 (let ((director
-				(loop for (pid job text) in
-				      (gethash (car film) imdb-data-participants)
-				      when (equal job "director")
-				      return (car (gethash pid imdb-data-people)))))
-			   (if (not director)
+			 (let ((directors
+				(imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
+						   (getf film :mid))))
+			   (if (not directors)
 			       ""
-			     (propertize (format " %s" director)
-					 'face '(variable-pitch
-						 (:foreground "#80a080"))))))
-		 'id (car film)))))
+			     (propertize
+			      (concat " " (mapconcat (lambda (e)
+						       (getf e :primary-name))
+						     directors ", "))
+			      'face '(variable-pitch
+				      (:foreground "#80a080"))))))
+		 'id (getf film :mid)))))
     (goto-char (point-min))))
 
 (provide 'imdb-mode)

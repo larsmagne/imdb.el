@@ -504,38 +504,36 @@
 (defun imdb-mode-search-person (person)
   "List films matching PERSON."
   (interactive "sPerson: ")
-  (let ((films nil)
-	(inhibit-read-only t))
+  (switch-to-buffer (format "*imdb %s*" person))
+  (let ((inhibit-read-only t))
+    (imdb-mode)
     (setq imdb-mode-mode 'people-search
 	  imdb-mode-search person)
     (erase-buffer)
-    (maphash
-     (lambda (key value)
-       (when (string-match person (car value))
-	 (dolist (film (gethash key imdb-data-participated-in))
-	   (push (append (cons (car film) (gethash (car film) imdb-data-films))
-			 value)
-		 films))))
-     imdb-data-people)
-    (setq films (imdb-mode-filter films))
-    (unless films
-      (error "No films match %S" person))
-    (dolist (film (cl-sort films 'string<
-			   :key (lambda (e)
-				  (nth 2 e))))
+    (imdb-mode-search-person-1 person)))
+
+(defun imdb-mode-search-person-1 (person)
+  (let ((people (imdb-select-where
+		 "select * from person where lower(primary_name) like ?"
+		 (format "%%%s%%" person)))
+	(inhibit-read-only t))
+    (erase-buffer)
+    (unless people
+      (error "No people match %S" person))
+    (dolist (person (cl-sort people 'string<
+			     :key (lambda (e)
+				    (getf e :primary-anem))))
       (insert
        (propertize
-	(format "%s %s%s%s %s\n"
-		(propertize (nth 2 film) 'face 'variable-pitch)
-		(propertize " " 'display '(space :align-to 8))
-		(propertize (nth 1 film) 'face 'variable-pitch)
-		(if (equal (nth 3 film) "movie")
+	(format "%s%s\n"
+		(propertize (getf person :primary-name)
+			    'face 'variable-pitch)
+		(if (not (getf person :birth-year))
 		    ""
-		  (propertize (format " (%s)" (nth 3 film))
+		  (propertize (format " (%s)" (getf person :birth-year))
 			      'face '(variable-pitch
-				      (:foreground "#80a080"))))
-		(nth 4 film))
-	'id (car film))))
+				      (:foreground "#a0a0a0")))))
+	'id (getf person :pid))))
     (goto-char (point-min))))
 
 (defun imdb-mode-filter (films)
@@ -554,7 +552,6 @@
       (error "Nothing under point"))
     (cond
      ((or (eq imdb-mode-mode 'film-search)
-	  (eq imdb-mode-mode 'people-search)
 	  (eq imdb-mode-mode 'person))
       (imdb-mode-display-film id))
      (t

@@ -640,9 +640,7 @@
 		     'face '(variable-pitch (:foreground "#a0a0f0"))))))
 	       'id (getf person :pid))))
     (goto-char (point-min))
-    (forward-line 1))
-  ;(imdb-get-actors id)
-  )
+    (forward-line 1)))
 
 (defun imdb-mode-display-person (id)
   (let ((inhibit-read-only t)
@@ -693,9 +691,10 @@
 (defun imdb-update-image (id)
   (url-retrieve
    (format "http://www.imdb.com/title/%s/" id)
-   (lambda (status buffer)
+   (lambda (status buffer id)
      (goto-char (point-min))
-     (when (search-forward "\n\n" nil t)
+     (if (not (search-forward "\n\n" nil t))
+	 (imdb-get-actors id buffer)
        (imdb-update-image-1
 	(loop with dom = (libxml-parse-html-region (point) (point-max))
 	      for image in (dom-by-tag dom 'img)
@@ -704,27 +703,27 @@
 	      return (shr-expand-url
 		      (dom-attr (dom-parent dom image) 'href)
 		      "http://www.imdb.com/"))
-	buffer))
+	buffer id))
      (kill-buffer (current-buffer)))
-   (list (current-buffer))
+   (list (current-buffer) id)
    t))
 
-(defun imdb-update-image-1 (url buffer)
+(defun imdb-update-image-1 (url buffer id)
   (when url
     (url-retrieve
      url
-     (lambda (status buffer)
+     (lambda (status buffer id)
        (goto-char (point-min))
-       (imdb-update-image-2 (imdb-extract-image-json) buffer)
+       (imdb-update-image-2 (imdb-extract-image-json) buffer id)
        (kill-buffer (current-buffer)))
-     (list buffer) t)))
+     (list buffer id) t)))
 
-(defun imdb-update-image-2 (json buffer)
+(defun imdb-update-image-2 (json buffer id)
   (let ((src (imdb-get-image-from-json json)))
     (when src
       (url-retrieve
        src
-       (lambda (status buffer)
+       (lambda (status buffer id)
 	 (goto-char (point-min))
 	 (when (search-forward "\n\n" nil t)
 	   (let ((data (buffer-substring (point) (point-max))))
@@ -736,8 +735,9 @@
 		     (delete-region (point) (line-end-position))
 		     (insert-image
 		      (create-image data 'imagemagick t :height 400))))))))
-	 (kill-buffer (current-buffer)))
-       (list buffer) t))))
+	 (kill-buffer (current-buffer))
+	 (imdb-get-actors id buffer))
+       (list buffer id) t))))
 
 (defun imdb-insert-placeholder (width height &optional no-gradient)
   (let* ((scale (image-compute-scaling-factor image-scaling-factor))
@@ -753,7 +753,7 @@
 (defun imdb-clean (string)
   (string-trim (replace-regexp-in-string "[ \t\n]+" " " string)))
 
-(defun imdb-get-actors (mid)
+(defun imdb-get-actors (mid buffer)
   (url-retrieve
    (format "https://www.imdb.com/title/%s/fullcredits?ref_=tt_cl_sm" mid)
    (lambda (status buffer)
@@ -797,13 +797,16 @@
 		   (put-text-property start (point)
 				      'id (getf person :pid)))))))
 	 (kill-buffer (current-buffer))
-	 (imdb-load-people-images
-	  (mapcar (lambda (e) (getf e :pid))
-		  (if (> (length people) 10)
-		      (setcdr (nthcdr 10 people) nil)
-		    people))
-	  buffer))))
-   (list (current-buffer))))
+	 (when people
+	   (imdb-load-people-images
+	    (mapcar (lambda (e) (getf e :pid))
+		    (if (> (length people) 10)
+			(progn
+			  (setcdr (nthcdr 10 people) nil)
+			  people)
+		      people))
+	    buffer)))))
+   (list buffer)))
 
 (defun imdb-load-people-images (pids buffer)
   (let ((pid (pop pids)))
@@ -820,14 +823,19 @@
 	       (url-retrieve img 'imdb-load-people-image (list pid buffer))
 	     (when (buffer-live-p buffer)
 	       (with-current-buffer buffer
-		 (let ((inhibit-read-only t))
+		 (let ((inhibit-read-only t)
+		       match)
 		   (save-excursion
 		     (goto-char (point-min))
-		     (when (setq match (text-property-search-forward 'id pid t))
+		     (when (and (search-forward "\n\n" nil t 3)
+				(setq match (text-property-search-forward
+					     'id pid t)))
 		       (goto-char (prop-match-beginning match))
 		       (delete-region (point) (1+ (point)))
 		       (imdb-insert-placeholder 100 150 t)))))))
-	   (imdb-load-people-images pids buffer)))
+	   (message "Length %s" (length pids))
+	   (when pids
+	     (imdb-load-people-images pids buffer))))
        (kill-buffer (current-buffer)))
      (list pid pids buffer))))
 
@@ -840,7 +848,8 @@
 	  (let ((inhibit-read-only t))
 	    (save-excursion
 	      (goto-char (point-min))
-	      (when (setq match (text-property-search-forward 'id pid t))
+	      (when (and (search-forward "\n\n" nil t 3)
+			 (setq match (text-property-search-forward 'id pid t)))
 		(goto-char (prop-match-beginning match))
 		(delete-region (point) (1+ (point)))
 		(insert-image

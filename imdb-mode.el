@@ -641,7 +641,8 @@
 		      (mapconcat
 		       (lambda (e)
 			 (format "%S" (getf e :character)))
-		       characters ", "))))))
+		       characters ", "))
+		     'face '(variable-pitch (:foreground "#a0a0f0"))))))
 	       'id (getf person :pid))))
     (goto-char (point-min))
     (forward-line 1)))

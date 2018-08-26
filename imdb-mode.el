@@ -79,7 +79,7 @@
 
     (rating
      (mid text :primary :references movie)
-     (rating number)
+     (rating real)
      (votes integer))
 
     (principal
@@ -131,9 +131,13 @@
       (write-region (point) (point-max) file))
     (kill-buffer (current-buffer))))
 
-(defun imdb-create-tables ()
+(defun imdb-initialize ()
   (unless imdb-db
-    (setq imdb-db (sqlite3-new "~/.emacs.d/imdb/imdb.sqlite3")))
+    (setq imdb-db (sqlite3-new
+		   (file-truename "~/.emacs.d/imdb/imdb.sqlite3")))))
+
+(defun imdb-create-tables ()
+  (imdb-initialize)
   (loop for (table . columns) in imdb-tables
 	do (sqlite3-execute-batch
 	    imdb-db (format
@@ -313,7 +317,7 @@
 			     ((and value
 				   (or (eq type 'integer)
 				       (eq type 'number)
-				       (eq type 'real)))
+				       (eq type 'float)))
 			      (string-to-number value))
 			     ((eq type 'bool)
 			      (if (equal value "0")
@@ -391,6 +395,7 @@
 	    collect value)
       'vector)
      (lambda (row names)
+       (message "%S" row)
        (push (nconc (list :_type table)
 		    (loop for value in row
 			  for column in names
@@ -425,6 +430,7 @@
   "Create a buffer to examine the imdb database."
   (interactive "sFilm: ")
   (switch-to-buffer "*imdb*")
+  (imdb-initialize)
   (let ((inhibit-read-only t))
     (erase-buffer)
     (imdb-mode)
@@ -472,6 +478,7 @@
 (defun imdb-mode-search-film (film)
   "List films matching FILM."
   (interactive "sFilm: ")
+  (imdb-initialize)
   (let ((films (imdb-select-where
 		"select * from movie where lower(primary_title) like ?"
 		(format "%%%s%%" film)))
@@ -504,6 +511,7 @@
 (defun imdb-mode-search-person (person)
   "List films matching PERSON."
   (interactive "sPerson: ")
+  (imdb-initialize)
   (switch-to-buffer (format "*imdb %s*" person))
   (let ((inhibit-read-only t))
     (imdb-mode)
@@ -570,6 +578,13 @@
     (erase-buffer)
     (imdb-mode)
     (setq imdb-mode-mode 'film)
+    (let ((svg (svg-create 300 400)))
+      (svg-gradient svg "background" 'linear '((0 . "#b0b0b0") (100 . "#808080")))
+      (svg-rectangle svg 0 0 300 400 :gradient "background"
+                     :stroke-width 2 :stroke-color "black")
+      (insert-image (svg-image svg)))
+    (insert "\n\n")
+    (imdb-update-image id)
     (let ((directors
 	   (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
 			      id)))
@@ -584,7 +599,16 @@
 		      'face '(variable-pitch
 			      (:foreground "#f0f0f0"
 					   :weight bold)))))
-       "\n\n"))
+       "\n"))
+
+    (let ((rating (car (imdb-select 'rating :mid id))))
+      (when rating
+	(insert
+	 (propertize (format "Rating %s/%s votes" (getf rating :rating)
+			     (getf rating :votes)))
+	 "\n")))
+
+    (insert "\n")
     
     (dolist (person (cl-sort
 		     (imdb-select 'principal :mid id) '<
@@ -664,6 +688,60 @@
 				      (:foreground "#80a080"))))))
 		 'id (getf film :mid)))))
     (goto-char (point-min))))
+
+(defun imdb-update-image (id)
+  (url-retrieve
+   (format "http://www.imdb.com/title/%s/" id)
+   (lambda (status buffer)
+     (goto-char (point-min))
+     (when (search-forward "\n\n" nil t)
+       (imdb-update-image-1
+	(loop with dom = (libxml-parse-html-region (point) (point-max))
+	      for image in (dom-by-tag dom 'img)
+	      for src = (dom-attr image 'src)
+	      when (and src (string-match "_AL_" src))
+	      return (shr-expand-url
+		      (dom-attr (dom-parent dom image) 'href)
+		      "http://www.imdb.com/"))
+	buffer))
+     (kill-buffer (current-buffer)))
+   (list (current-buffer))))
+
+(defun imdb-update-image-1 (url buffer)
+  (url-retrieve
+   url
+   (lambda (status buffer)
+     (goto-char (point-min))
+     (imdb-update-image-2 (imdb-extract-image-json) buffer)
+     (kill-buffer (current-buffer)))
+   (list buffer)))
+
+(defun imdb-update-image-2 (json buffer)
+  (let ((src (imdb-get-image-from-json json)))
+    (when src
+      (url-retrieve
+       src
+       (lambda (status buffer)
+	 (goto-char (point-min))
+	 (when (search-forward "\n\n" nil t)
+	   (let ((data (buffer-substring (point) (point-max))))
+	     (when (buffer-live-p buffer)
+	       (with-current-buffer buffer
+		 (save-excursion
+		   (goto-char (point-min))
+		   (let ((inhibit-read-only t))
+		     (delete-region (point) (line-end-position))
+		     (insert-image
+		      (create-image data 'imagemagick t :height 400))))))))
+	 (kill-buffer (current-buffer)))
+       (list buffer)))))
+
+(defun imdb-get-image-json (url)
+  (with-current-buffer (url-retrieve-synchronously url)
+    (goto-char (point-min))
+    (prog1
+	(imdb-extract-image-json)
+      (kill-buffer (current-buffer)))))
 
 (provide 'imdb-mode)
 

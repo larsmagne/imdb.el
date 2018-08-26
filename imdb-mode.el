@@ -101,6 +101,36 @@
 (defun imdb-hyphenate (elem)
   (replace-regexp-in-string "_" "-" elem))
 
+
+(defun imdb-download-data ()
+  (let ((dom
+	 (with-current-buffer (url-retrieve-synchronously "https://datasets.imdbws.com/")
+	   (goto-char (point-min))
+	   (search-forward "\n\n")
+	   (prog1
+	       (libxml-parse-html-region (point) (point-max))
+	     (kill-buffer (current-buffer))))))
+    (loop for elem in (dom-by-tag dom 'a)
+	  for url = (dom-attr elem 'href)
+	  when (string-match "[.]gz\\'" url)
+	  do (imdb-download-data-1 url))))
+
+(defun imdb-download-data-1 (url)
+  (with-current-buffer (url-retrieve-synchronously url)
+    (goto-char (point-min))
+    (search-forward "\n\n")
+    (zlib-decompress-region (point) (point-max))
+    (let ((file (expand-file-name (replace-regexp-in-string
+				   "[.]gz\\'" ""
+				   (file-name-nondirectory
+				    (url-filename
+				     (url-generic-parse-url url))))
+				  "~/.emacs.d/imdb")))
+      (unless (file-exists-p (file-name-directory file))
+	(make-directory (file-name-directory file) t))
+      (write-region (point) (point-max) file))
+    (kill-buffer (current-buffer))))
+
 (defun imdb-create-tables ()
   (unless imdb-db
     (setq imdb-db (sqlite3-new "~/.emacs.d/imdb/imdb.sqlite3")))

@@ -395,7 +395,6 @@
 	    collect value)
       'vector)
      (lambda (row names)
-       (message "%S" row)
        (push (nconc (list :_type table)
 		    (loop for value in row
 			  for column in names
@@ -578,9 +577,10 @@
     (erase-buffer)
     (imdb-mode)
     (setq imdb-mode-mode 'film)
-    (let ((svg (svg-create 300 400)))
+    (let* ((scale (image-compute-scaling-factor image-scaling-factor))
+	  (svg (svg-create (* 300 scale) (* 400 scale))))
       (svg-gradient svg "background" 'linear '((0 . "#b0b0b0") (100 . "#808080")))
-      (svg-rectangle svg 0 0 300 400 :gradient "background"
+      (svg-rectangle svg 0 0 (* 300 scale) (* 400 scale) :gradient "background"
                      :stroke-width 2 :stroke-color "black")
       (insert-image (svg-image svg)))
     (insert "\n\n")
@@ -643,7 +643,8 @@
 			 (format "%S" (getf e :character)))
 		       characters ", "))))))
 	       'id (getf person :pid))))
-    (goto-char (point-min))))
+    (goto-char (point-min))
+    (forward-line 1)))
 
 (defun imdb-mode-display-person (id)
   (let ((inhibit-read-only t)
@@ -662,8 +663,9 @@
       (unless (equal (getf film :type) "tvEpisode") 
 	(insert (propertize
 		 (format "%s %s%s%s%s%s\n"
-			 (propertize (format "%s" (getf film :start-year))
-				     'face 'variable-pitch)
+			 (propertize
+			  (format "%s" (or (getf film :start-year) ""))
+			  'face 'variable-pitch)
 			 (propertize " " 'display '(space :align-to 8))
 			 (propertize (getf film :primary-title)
 				     'face 'variable-pitch)
@@ -705,7 +707,8 @@
 		      "http://www.imdb.com/"))
 	buffer))
      (kill-buffer (current-buffer)))
-   (list (current-buffer))))
+   (list (current-buffer))
+   t))
 
 (defun imdb-update-image-1 (url buffer)
   (url-retrieve
@@ -714,7 +717,7 @@
      (goto-char (point-min))
      (imdb-update-image-2 (imdb-extract-image-json) buffer)
      (kill-buffer (current-buffer)))
-   (list buffer)))
+   (list buffer) t))
 
 (defun imdb-update-image-2 (json buffer)
   (let ((src (imdb-get-image-from-json json)))
@@ -734,14 +737,7 @@
 		     (insert-image
 		      (create-image data 'imagemagick t :height 400))))))))
 	 (kill-buffer (current-buffer)))
-       (list buffer)))))
-
-(defun imdb-get-image-json (url)
-  (with-current-buffer (url-retrieve-synchronously url)
-    (goto-char (point-min))
-    (prog1
-	(imdb-extract-image-json)
-      (kill-buffer (current-buffer)))))
+       (list buffer) t))))
 
 (provide 'imdb-mode)
 

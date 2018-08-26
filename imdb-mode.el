@@ -577,12 +577,7 @@
     (erase-buffer)
     (imdb-mode)
     (setq imdb-mode-mode 'film)
-    (let* ((scale (image-compute-scaling-factor image-scaling-factor))
-	  (svg (svg-create (* 300 scale) (* 400 scale))))
-      (svg-gradient svg "background" 'linear '((0 . "#b0b0b0") (100 . "#808080")))
-      (svg-rectangle svg 0 0 (* 300 scale) (* 400 scale) :gradient "background"
-                     :stroke-width 2 :stroke-color "black")
-      (insert-image (svg-image svg)))
+    (imdb-insert-placeholder 300 400)
     (insert "\n\n")
     (imdb-update-image id)
     (let ((directors
@@ -740,6 +735,115 @@
 		      (create-image data 'imagemagick t :height 400))))))))
 	 (kill-buffer (current-buffer)))
        (list buffer) t))))
+
+(defun imdb-insert-placeholder (width height &optional no-gradient)
+  (let* ((scale (image-compute-scaling-factor image-scaling-factor))
+	 (svg (svg-create (* width scale) (* height scale))))
+    (svg-gradient svg "background" 'linear '((0 . "#b0b0b0") (100 . "#808080")))
+    (unless no-gradient
+      (svg-rectangle svg 0 0 (* width scale) (* height scale)
+		     :gradient "background"
+                     :stroke-width 2
+		     :stroke-color "black"))
+    (insert-image (svg-image svg))))
+
+(defun imdb-clean (string)
+  (string-trim (replace-regexp-in-string "[ \t\n]+" " " string)))
+
+(defun imdb-get-actors (mid)
+  (url-retrieve
+   (format "https://www.imdb.com/title/%s/fullcredits?ref_=tt_cl_sm" mid)
+   (lambda (status buffer)
+     (goto-char (point-min))
+     (when (search-forward "\n\n" nil t)
+       (let* ((table (dom-by-class
+		      (libxml-parse-html-region (point) (point-max))
+		      "cast_list"))
+	      (people
+	       (loop for line in (dom-by-tag table 'tr)
+		     for link = (dom-by-tag line 'a)
+		     for person = (dom-attr link 'href)
+		     when (and person
+			       (string-match "name/\\([^/]+\\)" person))
+		     collect (list :pid (match-string 1 person)
+				   :name (imdb-clean
+					  (dom-texts
+					   (cadr (dom-non-text-children line))))
+				   :character (imdb-clean
+					       (dom-texts
+						(dom-by-class
+						 line "character")))))))
+	 (with-current-buffer buffer
+	   (save-excursion
+	     (goto-char (point-max))
+	     (let ((inhibit-read-only t))
+	       (insert "\n")
+	       (dolist (person people)
+		 (let ((start (point)))
+		   (imdb-insert-placeholder 100 150)
+		   (insert
+		    (format "%s%s\n"
+			    (propertize (getf person :name)
+					'face 'variable-pitch)
+			    (if (equal (getf person :character) "")
+				""
+			      (propertize (format " %S"
+						  (getf person :character))
+					  'face '(variable-pitch
+						  (:foreground "#a0a0a0"))))))
+		   (put-text-property start (point)
+				      'id (getf person :pid)))))))
+	 (kill-buffer (current-buffer))
+	 (imdb-load-people-images
+	  (mapcar (lambda (e) (getf e :pid))
+		  (if (> (length people) 10)
+		      (setcdr (nthcdr 10 people) nil)
+		    people))
+	  buffer))))
+   (list (current-buffer))))
+
+(defun imdb-load-people-images (pids buffer)
+  (let ((pid (pop pids)))
+    (url-retrieve
+     (format "https://www.imdb.com/name/%s/" pid)
+     (lambda (status pid pids buffer)
+       (goto-char (point-min))
+       (when (search-forward "\n\n" nil t)
+	 (let* ((dom (libxml-parse-html-region (point) (point-max)))
+		(img (dom-attr (dom-by-tag (dom-by-id dom "img_primary")
+					   'img)
+			       'src)))
+	   (if img
+	       (url-retrieve img 'imdb-load-people-image (list pid buffer))
+	     (when (buffer-live-p buffer)
+	       (with-current-buffer buffer
+		 (let ((inhibit-read-only t))
+		   (save-excursion
+		     (goto-char (point-min))
+		     (when (setq match (text-property-search-forward 'id pid t))
+		       (goto-char (prop-match-beginning match))
+		       (delete-region (point) (1+ (point)))
+		       (imdb-insert-placeholder 100 150 t)))))))
+	   (imdb-load-people-images pids buffer)))
+       (kill-buffer (current-buffer)))
+     (list pid pids buffer))))
+
+(defun imdb-load-people-image (status pid buffer)
+  (goto-char (point-min))
+  (when (search-forward "\n\n" nil t)
+    (let ((data (buffer-substring (point) (point-max))))
+      (when (buffer-live-p buffer)
+	(with-current-buffer buffer
+	  (let ((inhibit-read-only t))
+	    (save-excursion
+	      (goto-char (point-min))
+	      (when (setq match (text-property-search-forward 'id pid t))
+		(goto-char (prop-match-beginning match))
+		(delete-region (point) (1+ (point)))
+		(insert-image
+		 (create-image data 'imagemagick t :height 150)))))))))
+  (kill-buffer (current-buffer)))
+	  
 
 (provide 'imdb-mode)
 

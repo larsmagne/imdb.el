@@ -1,8 +1,8 @@
 ;;; imdb-mode.el --- querying the imdb movie database
-;; Copyright (C) 2014 Lars Magne Ingebrigtsen
+;; Copyright (C) 2018 Lars Magne Ingebrigtsen
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
-;; Keywords: extensions, processes
+;; Keywords: movies
 
 ;; This file is not part of GNU Emacs.
 
@@ -22,6 +22,21 @@
 ;; Boston, MA 02111-1307, USA.
 
 ;;; Commentary:
+
+;; To work, this needs the sqlite3 module
+;; https://github.com/syohex/emacs-sqlite3
+
+;; The Emacs has to be pretty new -- anything older than Emacs 26
+;; probably won't work.  And it has to be built with module support.
+
+;; After getting all that set up, you need to download the IMDB
+;; dataset and create the sqlite3 database, which can be done with
+;; this:
+
+;; (imdb-download-and-create)
+
+;; This will take several hours and use 10GB of disk space.  Emacs
+;; will not be usable while this is going on.
 
 ;;; Code:
 
@@ -104,6 +119,13 @@
 
 (defun imdb-hyphenate (elem)
   (replace-regexp-in-string "_" "-" elem))
+
+(defun imdb-download-and-create ()
+  "Download the IMDB data files and create the sqlite3 database.
+This will take some hours and use 10GB of disk space."
+  (imdb-download-data)
+  (imdb-create-tables)
+  (imdb-read-data))
 
 (defun imdb-download-data ()
   (let ((dom
@@ -214,7 +236,7 @@
 
   (with-temp-buffer
     (sqlite3-execute-batch imdb-db "delete from person")
-    (sqlite3-execute-batch imdb-db "delete from person_profession")
+    (sqlite3-execute-batch imdb-db "delete from person_primary_profession")
     (sqlite3-execute-batch imdb-db "delete from person_known_for")
     (sqlite3-transaction imdb-db)
     (insert-file-contents "~/.emacs.d/imdb/name.basics.tsv")
@@ -578,7 +600,9 @@
       films
     (loop for film in films
 	  when (and (getf film :start-year)
-		    (equal (getf film :type) "movie"))
+		    (equal (getf film :type) "movie")
+		    (not (member (getf film :category)
+				 '("thanks" "miscellaneous"))))
 	  collect film)))
 
 (defun imdb-mode-select ()
@@ -742,6 +766,17 @@
     (imdb-insert-placeholder 300 400)
     (put-text-property (point-min) (point) 'id id)
     (insert "\n\n")
+    (let ((person (car (imdb-select 'person :pid id))))
+      (insert
+       (propertize
+	(getf person :primary-name)
+	'face '(variable-pitch (:foreground "#f0f0f0"))))
+      (when (getf person :birth-year)
+	(insert
+	 (propertize
+	  (format " (%s)" (getf person :birth-year))
+	  'face '(variable-pitch (:foreground "#a0a0a0"))))))
+    (insert "\n\n")
     (imdb-load-people-images (list id) (current-buffer) 300 400 0)
     (setq imdb-mode-mode 'person
 	  imdb-mode-search id)
@@ -758,7 +793,7 @@
     (dolist (film films)
       (imdb-mode-person-film film id))
     (goto-char (point-min))
-    (forward-line 1)
+    (forward-line 2)
     (imdb-person-update-films id)))
 
 (defun imdb-mode-person-film (film pid)
@@ -937,7 +972,7 @@
 		      people))
 	    buffer
 	    100 150 3)))))
-   (list buffer)))
+   (list buffer) t))
 
 (defun imdb-load-people-images (pids buffer width height newlines)
   (let ((pid (pop pids)))
@@ -971,7 +1006,7 @@
 	   (when pids
 	     (imdb-load-people-images pids buffer width height newlines))))
        (kill-buffer (current-buffer)))
-     (list pid pids buffer width height newlines))))
+     (list pid pids buffer width height newlines) t)))
 
 (defun imdb-load-people-image (status pid buffer width height newlines)
   (goto-char (point-min))
@@ -1039,7 +1074,7 @@
 	     (save-excursion
 	       (dolist (film films)
 		 (goto-char (point-min))
-		 (forward-line 2)
+		 (forward-line 4)
 		 (unless (text-property-search-forward 'id (getf film :mid) t)
 		   (if (not (getf film :start-year))
 		       (goto-char (point-max))
@@ -1050,7 +1085,7 @@
 		       (forward-line 1)))
 		   (imdb-mode-person-film film pid))))))))
      (kill-buffer (current-buffer)))
-   (list (current-buffer) pid)))
+   (list (current-buffer) pid) t))
 
 (defun imdb-display-type (type)
   (pcase type
@@ -1059,6 +1094,8 @@
     ("tvShort" "tv short")
     ("tvMiniSeries" "tv mini series")
     ("archive_footage" "footage")
+    ("visual_effects" "effects")
+    ("special_effects" "effects")
     (_ type)))
 
 (defvar imdb-buffers nil)

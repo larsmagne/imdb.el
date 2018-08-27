@@ -517,7 +517,8 @@
 		(propertize (getf film :primary-title) 'face 'variable-pitch)
 		(if (equal (getf film :type) "movie")
 		    ""
-		  (propertize (format " (%s)" (getf film :type))
+		  (propertize (format " (%s)" (imdb-display-type
+					       (getf film :type)))
 			      'face '(variable-pitch
 				      (:foreground "#80a080"))))
 		(let ((directors
@@ -681,7 +682,7 @@
 	(when genres
 	  (insert " "))
 	(insert 
-	 (propertize (format "(%s)" (getf film :type))
+	 (propertize (format "(%s)" (imdb-display-type (getf film :type)))
 		     'face '(variable-pitch
 			     (:foreground "#b0b0b0")))))
       (when (or (getf film :type)
@@ -708,7 +709,7 @@
 		       :primary-name)
 		 'face 'variable-pitch)
 		(propertize
-		 (format "(%s)" (getf person :category))
+		 (format "(%s)" (imdb-display-type (getf person :category)))
 		 'face '(variable-pitch (:foreground "#c0c0c0")))
 		(let ((characters (imdb-select 'principal-character
 					       :mid id
@@ -765,10 +766,12 @@
 			  'face 'variable-pitch)
 	      (if (equal (getf film :type) "movie")
 		  ""
-		(propertize (format " (%s)" (getf film :type))
+		(propertize (format " (%s)" (imdb-display-type
+					     (getf film :type)))
 			    'face '(variable-pitch
 				    (:foreground "#a0a0a0"))))
-	      (propertize (format " (%s)" (getf film :category))
+	      (propertize (format " (%s)" (imdb-display-type
+					   (getf film :category)))
 			  'face '(variable-pitch
 				  (:foreground "#c0c0c0")))
 	      (let ((characters (imdb-select 'principal-character
@@ -1018,6 +1021,14 @@
 		   (imdb-mode-person-film film pid))))))))
      (kill-buffer (current-buffer)))
    (list (current-buffer) pid)))
+
+(defun imdb-display-type (type)
+  (pcase type
+    ("tvSeries" "tv series")
+    ("tvMovie" "tv movie")
+    ("tvMiniSeries" "tv mini series")
+    ("archive_footage" "footage")
+    (_ type)))
 
 (provide 'imdb-mode)
 

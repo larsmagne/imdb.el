@@ -30,6 +30,11 @@
 
 (defvar imdb-db nil)
 
+(defvar imdb-mode-extra-data nil)
+(defvar imdb-mode-filter-insignificant nil)
+(defvar imdb-mode-mode 'film-search)
+(defvar imdb-mode-search nil)
+
 (defvar imdb-tables
   '((movie
      (mid text :primary)
@@ -423,6 +428,7 @@
   (setq-local imdb-mode-filter-insignificant nil)
   (setq-local imdb-mode-mode 'film-search)
   (setq-local imdb-mode-search nil)
+  (setq-local imdb-mode-extra-data nil)
   (setq truncate-lines t))
 
 (defun imdb-search (film)
@@ -695,22 +701,29 @@
 		"select movie.mid, primary_title, start_year, type, principal.category from movie inner join principal on movie.mid = principal.mid where pid = ?"
 		id)))
     (erase-buffer)
+    (setq a films)
     (setq imdb-mode-mode 'person
 	  imdb-mode-search id)
+    (dolist (film imdb-mode-extra-data)
+      (unless (cl-member film films
+			 :test (lambda (e1 e2)
+				 (equal (getf e1 :mid) (getf e2 :mid))))
+	(push film films)))
     (setq films (cl-sort
-		 (nreverse films) '<
+		 (reverse films) '<
 		 :key (lambda (e)
 			(or (getf e :start-year) most-positive-fixnum))))
     (setq films (imdb-mode-filter films))
     (dolist (film films)
-      (imdb-mode-person-film film))
-    (goto-char (point-min))))
+      (imdb-mode-person-film film id))
+    (goto-char (point-min))
+    (imdb-person-update-films id)))
 
-(defun imdb-mode-person-film (film)
+(defun imdb-mode-person-film (film pid)
   (unless (equal (getf film :type) "tvEpisode") 
     (insert
      (propertize
-      (format "%s %s%s%s%s%s\n"
+      (format "%s %s%s%s%s%s%s\n"
 	      (propertize
 	       (format "%s" (or (getf film :start-year) ""))
 	       'face 'variable-pitch)
@@ -725,6 +738,19 @@
 	      (propertize (format " (%s)" (getf film :category))
 			  'face '(variable-pitch
 				  (:foreground "#c0c0c0")))
+	      (let ((characters (imdb-select 'principal-character
+					     :mid (getf film :mid)
+					     :pid pid)))
+		(if (not characters)
+		    ""
+		  (propertize
+		   (concat
+		    " "
+		    (mapconcat
+		     (lambda (e)
+		       (format "%S" (getf e :character)))
+		     characters ", "))
+		   'face '(variable-pitch (:foreground "#a0a0f0")))))
 	      (let ((directors
 		     (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
 					(getf film :mid))))
@@ -883,7 +909,6 @@
 		       (goto-char (prop-match-beginning match))
 		       (delete-region (point) (1+ (point)))
 		       (imdb-insert-placeholder 100 150 t)))))))
-	   (message "Length %s" (length pids))
 	   (when pids
 	     (imdb-load-people-images pids buffer))))
        (kill-buffer (current-buffer)))
@@ -909,7 +934,7 @@
 (defun imdb-person-update-films (pid)
   (url-retrieve
    (format "https://www.imdb.com/name/%s/" pid)
-   (lambda (status buffer)
+   (lambda (status buffer pid)
      (goto-char (point-min))
      (when (search-forward "\n\n" nil t)
        (let* ((dom (libxml-parse-html-region (point) (point-max)))
@@ -922,19 +947,31 @@
 		     when (and href year 
 			       (string-match "/title/\\([^/]+\\)" href))
 		     collect
-		     (list :mid (match-string 1 href)
-			   :primary-title (imdb-clean (dom-texts link))
-			   :start-year
-			   (string-to-number
-			    (car (split-string
-				  (imdb-clean (dom-texts year)) "/")))
-			   :job (car (split-string (dom-attr elem 'id) "-"))
-			   :character (and (stringp character)
-					   (imdb-clean character))))))
+		     ;; If we have the data on the film, use it.
+		     (let ((film (car (imdb-select
+				       'movie :mid (match-string 1 href)))))
+		       (if film
+			   (progn
+			     (setf (getf film :category)
+				   (car (split-string (dom-attr elem 'id) "-")))
+			     film)
+			 (list :mid (match-string 1 href)
+			       :primary-title (imdb-clean (dom-texts link))
+			       :type "movie"
+			       :start-year
+			       (string-to-number
+				(car (split-string
+				      (imdb-clean (dom-texts year)) "/")))
+			       :category
+			       (car (split-string (dom-attr elem 'id) "-"))
+			       :character (and (stringp character)
+					       (imdb-clean character))))))))
 	 (setq films (cl-sort (nreverse films) '<
 			      :key (lambda (elem)
 				     (or (getf elem :year) 1.0e+INF))))
 	 (with-current-buffer buffer
+	   (setq films (imdb-mode-filter films))
+	   (setq imdb-mode-extra-data films)
 	   (let ((inhibit-read-only t))
 	     (save-excursion
 	       (dolist (film films)
@@ -947,9 +984,9 @@
 					      (match-string 0))))
 				   (<= year (getf film :start-year))))
 		       (forward-line 1)))
-		   (imdb-mode-person-film film))))))))
+		   (imdb-mode-person-film film pid))))))))
      (kill-buffer (current-buffer)))
-   (list (current-buffer))))
+   (list (current-buffer) pid)))
 
 (provide 'imdb-mode)
 

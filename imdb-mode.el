@@ -748,7 +748,7 @@ This will take some hours and use 10GB of disk space."
 		      " "
 		      (mapconcat
 		       (lambda (e)
-			 (format "%S" (getf e :character)))
+			 (format "\"%s\"" (getf e :character)))
 		       characters ", "))
 		     'face '(variable-pitch (:foreground "#a0a0f0"))))))
 	       'id (getf person :pid))))
@@ -954,12 +954,12 @@ This will take some hours and use 10GB of disk space."
 		     (push person updates)
 		     (imdb-insert-placeholder 100 150))
 		   (insert
-		    (format "%s%s\n"
+		    (format " %s%s\n"
 			    (propertize (getf person :name)
 					'face 'variable-pitch)
 			    (if (equal (getf person :character) "")
 				""
-			      (propertize (format " %S"
+			      (propertize (format " \"%s\""
 						  (getf person :character))
 					  'face '(variable-pitch
 						  (:foreground "#a0a0a0"))))))

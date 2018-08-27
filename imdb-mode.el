@@ -501,6 +501,7 @@
 		(format "%%%s%%" film)))
 	(inhibit-read-only t))
     (erase-buffer)
+    (imdb-kill)
     (setq films (imdb-mode-filter films))
     (unless films
       (error "No films match %S" film))
@@ -553,6 +554,7 @@
 		 (format "%%%s%%" person)))
 	(inhibit-read-only t))
     (erase-buffer)
+    (imdb-kill)
     (unless people
       (error "No people match %S" person))
     (dolist (person (cl-sort people 'string<
@@ -634,6 +636,7 @@
   (let ((inhibit-read-only t)
 	(film (car (imdb-select 'movie :mid id))))
     (erase-buffer)
+    (imdb-kill)
     (imdb-mode)
     (setq imdb-mode-mode 'film
 	  imdb-mode-search id)
@@ -735,6 +738,7 @@
 		"select movie.mid, primary_title, start_year, type, principal.category from movie inner join principal on movie.mid = principal.mid where pid = ?"
 		id)))
     (erase-buffer)
+    (imdb-kill)
     (imdb-insert-placeholder 300 400)
     (put-text-property (point-min) (point) 'id id)
     (insert "\n\n")
@@ -805,7 +809,7 @@
       'id (getf film :mid)))))
 
 (defun imdb-update-film-image (id)
-  (url-retrieve
+  (imdb-url-retrieve
    (format "http://www.imdb.com/title/%s/" id)
    (lambda (status buffer id)
      (goto-char (point-min))
@@ -836,7 +840,7 @@
 (defun imdb-update-film-image-1 (url buffer id)
   (if (not url)
       (imdb-placehold-film buffer)
-    (url-retrieve
+    (imdb-url-retrieve
      url
      (lambda (status buffer id)
        (goto-char (point-min))
@@ -848,7 +852,7 @@
   (let ((src (imdb-get-image-from-json json)))
     (if (not src)
 	(imdb-placehold-film buffer)
-      (url-retrieve
+      (imdb-url-retrieve
        src
        (lambda (status buffer id)
 	 (goto-char (point-min))
@@ -880,7 +884,7 @@
   (string-trim (replace-regexp-in-string "[  \t\n]+" " " string)))
 
 (defun imdb-get-actors (mid buffer)
-  (url-retrieve
+  (imdb-url-retrieve
    (format "https://www.imdb.com/title/%s/fullcredits?ref_=tt_cl_sm" mid)
    (lambda (status buffer)
      (goto-char (point-min))
@@ -937,7 +941,7 @@
 
 (defun imdb-load-people-images (pids buffer width height newlines)
   (let ((pid (pop pids)))
-    (url-retrieve
+    (imdb-url-retrieve
      (format "https://www.imdb.com/name/%s/" pid)
      (lambda (status pid pids buffer width height newlines)
        (goto-char (point-min))
@@ -947,8 +951,8 @@
 					   'img)
 			       'src)))
 	   (if img
-	       (url-retrieve img 'imdb-load-people-image
-			     (list pid buffer width height newlines))
+	       (imdb-url-retrieve img 'imdb-load-people-image
+				  (list pid buffer width height newlines))
 	     (when (buffer-live-p buffer)
 	       (with-current-buffer buffer
 		 (let ((inhibit-read-only t)
@@ -991,7 +995,7 @@
   (kill-buffer (current-buffer)))
 
 (defun imdb-person-update-films (pid)
-  (url-retrieve
+  (imdb-url-retrieve
    (format "https://www.imdb.com/name/%s/" pid)
    (lambda (status buffer pid)
      (goto-char (point-min))
@@ -1057,8 +1061,22 @@
     ("archive_footage" "footage")
     (_ type)))
 
-(defun imdb-update-person-image (id)
-  )
+(defvar imdb-buffers nil)
+
+(defun imdb-url-retrieve (url callback &optional cbargs silent inhibit-cookies)
+  (let ((buffer (url-retrieve url callback cbargs silent inhibit-cookies)))
+    (push buffer imdb-buffers)))
+
+(defun imdb-kill ()
+  (dolist (buffer imdb-buffers)
+    (when (buffer-live-p buffer)
+      (when (get-buffer-process buffer)
+	(delete-process (get-buffer-process buffer)))
+      (when (buffer-live-p buffer)
+	(with-current-buffer buffer
+	  (let ((kill-buffer-query-functions nil))
+	    (kill-buffer buffer))))))
+  (setq imdb-buffers nil))
 
 (provide 'imdb-mode)
 

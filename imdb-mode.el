@@ -160,7 +160,8 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-initialize ()
   (unless imdb-db
     (setq imdb-db (sqlite3-new
-		   (file-truename "~/.emacs.d/imdb/imdb.sqlite3")))))
+		   (file-truename "~/.emacs.d/imdb/imdb.sqlite3")))
+    (sqlite3-load-extension imdb-db "/usr/lib/sqlite3/pcre.so")))
 
 (defun imdb-create-tables ()
   (imdb-initialize)
@@ -445,7 +446,9 @@ This will take some hours and use 10GB of disk space."
     (define-key map "d" 'imdb-mode-show-directing)
     (define-key map "&" 'imdb-mode-open-imdb)
     (define-key map "q" 'kill-current-buffer)
+    (define-key map " " 'imdb-mode-mark-line)
     (define-key map "\r" 'imdb-mode-select)
+    (define-key map "m" 'imdb-mode-display-intersection)
     map))
 
 (define-derived-mode imdb-mode special-mode "Imdb"
@@ -470,6 +473,95 @@ This will take some hours and use 10GB of disk space."
     (erase-buffer)
     (imdb-mode)
     (imdb-mode-search-film film)))
+
+(defun imdb-mode-mark-line ()
+  "Toggle marking of the current line."
+  (interactive)
+  (let ((id (get-text-property (point) 'id))
+	(inhibit-read-only t))
+    (unless id
+      (error "Nothing on the current line"))
+    (let ((marked (get-text-property (line-beginning-position) 'mark)))
+      (add-face-text-property
+       (line-beginning-position) (line-end-position)
+       (list :weight (if marked 'normal 'bold)))
+      (put-text-property (line-beginning-position)
+			 (1+ (line-beginning-position))
+			 'mark (not marked)))))
+
+(defun imdb-mode-display-intersection ()
+  "Show films that have all the people involved."
+  (interactive)
+  (let ((pids nil)
+	match)
+    (save-excursion
+      (goto-char (point-min))
+      (while (setq match (text-property-search-forward 'mark t))
+	(push (get-text-property (prop-match-beginning match) 'id) pids)))
+    (unless pids
+      (error "No marked people"))
+    (switch-to-buffer (format "*imdb %s*"
+			      (mapconcat
+			       (lambda (pid)
+				 (getf (car (imdb-select 'person :pid pid))
+				       :primary-name))
+			       pids
+			       ",")))
+    (let ((inhibit-read-only t))
+      (imdb-mode)
+      (imdb-mode-display-intersection-1 pids))))
+
+(defun imdb-mode-display-intersection-1 (pids)
+  (let* ((inhibit-read-only t)
+	 (all (loop for pid in pids
+		    collect (imdb-select-where
+			     "select movie.mid, primary_title, start_year, type, principal.category from movie inner join principal on movie.mid = principal.mid where pid = ?"
+			     pid)))
+	 (films
+	  (loop for film in (car all)
+		when (every
+		      #'identity
+		      (loop for other in (cdr all)
+			    collect
+			    (cl-member
+				  film other
+				  :test (lambda (e1 e2)
+					  (equal (getf e1 :mid)
+						 (getf e2 :mid))))))
+		collect film)))
+    (erase-buffer)
+    (imdb-kill)
+    (dolist (pid pids)
+      (let ((start (point)))
+	(imdb-insert-placeholder 300 400)
+	(put-text-property start (point) 'id pid)
+	(insert " ")))
+    (imdb-load-people-images pids (current-buffer) 300 400 0)
+    (insert "\n\n")
+    (dolist (pid pids)
+      (let ((person (car (imdb-select 'person :pid pid))))
+	(insert
+	 (propertize
+	  (getf person :primary-name)
+	  'face '(variable-pitch (:foreground "#f0f0f0"))))
+	(when (getf person :birth-year)
+	  (insert
+	   (propertize
+	    (format " (%s)" (getf person :birth-year))
+	    'face '(variable-pitch (:foreground "#a0a0a0"))))))
+      (insert " "))
+    (insert "\n\n")
+    (setq imdb-mode-mode 'intersection
+	  imdb-mode-search pids)
+    (setq films (cl-sort
+		 (reverse films) '<
+		 :key (lambda (e)
+			(or (getf e :start-year) 1.0e+INF))))
+    (setq films (imdb-mode-filter films))
+    (dolist (film films)
+      (imdb-mode-person-film film (car pids)))
+    (goto-char (point-min))
+    (forward-line 2)))
 
 (defun imdb-mode-toggle-insignificant ()
   "Toggle whether to list proper films only."
@@ -549,8 +641,8 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-mode-search-film-1 (film)
   (let ((films (imdb-select-where
-		"select * from movie where lower(primary_title) like ?"
-		(format "%%%s%%" film)))
+		"select * from movie where lower(primary_title) regexp ?"
+		film))
 	(inhibit-read-only t))
     (erase-buffer)
     (imdb-kill)
@@ -602,8 +694,8 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-mode-search-person-1 (person)
   (let ((people (imdb-select-where
-		 "select * from person where lower(primary_name) like ?"
-		 (format "%%%s%%" person)))
+		 "select * from person where lower(primary_name) regexp ?"
+		 person))
 	(inhibit-read-only t))
     (erase-buffer)
     (imdb-kill)
@@ -657,6 +749,7 @@ This will take some hours and use 10GB of disk space."
       (error "Nothing under point"))
     (cond
      ((or (eq imdb-mode-mode 'film-search)
+	  (eq imdb-mode-mode 'intersection)
 	  (eq imdb-mode-mode 'person))
       (imdb-mode-display-film id))
      (t

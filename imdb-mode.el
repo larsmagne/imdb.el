@@ -600,7 +600,7 @@
       (cond
        ((eq imdb-mode-mode 'person)
 	(imdb-mode-open-person-in-imdb imdb-mode-search))
-       ((eq imdb-mode-mode 'person)
+       ((eq imdb-mode-mode 'film)
 	(imdb-mode-open-film-in-imdb imdb-mode-search))
        (t
 	(error "Nothing under point"))))
@@ -629,7 +629,8 @@
   (let ((inhibit-read-only t))
     (erase-buffer)
     (imdb-mode)
-    (setq imdb-mode-mode 'film)
+    (setq imdb-mode-mode 'film
+	  imdb-mode-search id)
     (imdb-insert-placeholder 300 400)
     (insert "\n\n")
     (imdb-update-image id)
@@ -693,7 +694,8 @@
 		     'face '(variable-pitch (:foreground "#a0a0f0"))))))
 	       'id (getf person :pid))))
     (goto-char (point-min))
-    (forward-line 1)))
+    (forward-line 1)
+    (imdb-get-actors id (current-buffer))))
 
 (defun imdb-mode-display-person (id)
   (let ((inhibit-read-only t)
@@ -769,8 +771,7 @@
    (format "http://www.imdb.com/title/%s/" id)
    (lambda (status buffer id)
      (goto-char (point-min))
-     (if (not (search-forward "\n\n" nil t))
-	 (imdb-get-actors id buffer)
+     (when (search-forward "\n\n" nil t)
        (imdb-update-image-1
 	(loop with dom = (libxml-parse-html-region (point) (point-max))
 	      for image in (dom-by-tag dom 'img)
@@ -811,8 +812,7 @@
 		     (delete-region (point) (line-end-position))
 		     (insert-image
 		      (create-image data 'imagemagick t :height 400))))))))
-	 (kill-buffer (current-buffer))
-	 (imdb-get-actors id buffer))
+	 (kill-buffer (current-buffer)))
        (list buffer id) t))))
 
 (defun imdb-insert-placeholder (width height &optional no-gradient)

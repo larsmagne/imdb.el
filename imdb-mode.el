@@ -1095,6 +1095,7 @@ This will take some hours and use 10GB of disk space."
     ("archive_footage" "footage")
     ("visual_effects" "effects")
     ("special_effects" "effects")
+    ("camera_department" "camera dept")
     (_ type)))
 
 (defvar imdb-buffers nil)

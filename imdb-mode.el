@@ -454,7 +454,7 @@ This will take some hours and use 10GB of disk space."
 \\{imdb-mode-map}"
   (setq buffer-read-only t)
   (buffer-disable-undo)
-  (setq-local imdb-mode-filter-insignificant nil)
+  (setq-local imdb-mode-filter-insignificant t)
   (setq-local imdb-mode-filter-job nil)
   (setq-local imdb-mode-mode 'film-search)
   (setq-local imdb-mode-search nil)
@@ -486,7 +486,7 @@ This will take some hours and use 10GB of disk space."
   "Show only acting."
   (interactive)
   (setq imdb-mode-filter-job
-	(if imdb-mode-filter-job
+	(if (eq imdb-mode-filter-job 'acting)
 	    nil
 	  'acting))
   (imdb-mode-refresh-buffer))
@@ -495,7 +495,7 @@ This will take some hours and use 10GB of disk space."
   "Show only directing."
   (interactive)
   (setq imdb-mode-filter-job
-	(if imdb-mode-filter-job
+	(if (eq imdb-mode-filter-job 'directing)
 	    nil
 	  'directing))
   (imdb-mode-refresh-buffer))
@@ -886,6 +886,7 @@ This will take some hours and use 10GB of disk space."
      (goto-char (point-min))
      (if (not (search-forward "\n\n" nil t))
 	 (imdb-placehold-film buffer)
+       (url-store-in-cache)
        (imdb-update-film-image-1
 	(loop with dom = (libxml-parse-html-region (point) (point-max))
 	      for image in (dom-by-tag dom 'img)
@@ -914,6 +915,7 @@ This will take some hours and use 10GB of disk space."
     (imdb-url-retrieve
      url
      (lambda (status buffer id)
+       (url-store-in-cache)
        (goto-char (point-min))
        (imdb-update-film-image-2 (imdb-extract-image-json) buffer id)
        (kill-buffer (current-buffer)))
@@ -928,6 +930,7 @@ This will take some hours and use 10GB of disk space."
        (lambda (status buffer id)
 	 (goto-char (point-min))
 	 (when (search-forward "\n\n" nil t)
+	   (url-store-in-cache)
 	   (let ((data (buffer-substring (point) (point-max))))
 	     (when (buffer-live-p buffer)
 	       (with-current-buffer buffer
@@ -960,6 +963,7 @@ This will take some hours and use 10GB of disk space."
    (lambda (status buffer)
      (goto-char (point-min))
      (when (search-forward "\n\n" nil t)
+       (url-store-in-cache)
        (let* ((table (dom-by-class
 		      (libxml-parse-html-region (point) (point-max))
 		      "cast_list"))
@@ -1015,6 +1019,7 @@ This will take some hours and use 10GB of disk space."
      (lambda (status pid pids buffer width height newlines)
        (goto-char (point-min))
        (when (search-forward "\n\n" nil t)
+	 (url-store-in-cache)
 	 (let* ((dom (libxml-parse-html-region (point) (point-max)))
 		(img (dom-attr (dom-by-tag (dom-by-id dom "img_primary")
 					   'img)
@@ -1045,6 +1050,7 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-load-people-image (status pid buffer width height newlines)
   (goto-char (point-min))
   (when (search-forward "\n\n" nil t)
+    (url-store-in-cache)
     (let ((data (buffer-substring (point) (point-max)))
 	  match)
       (when (buffer-live-p buffer)
@@ -1069,6 +1075,7 @@ This will take some hours and use 10GB of disk space."
    (lambda (status buffer pid)
      (goto-char (point-min))
      (when (search-forward "\n\n" nil t)
+       (url-store-in-cache)
        (let* ((dom (libxml-parse-html-region (point) (point-max)))
 	      (films
 	       (loop for elem in (dom-by-class dom "\\`filmo-row")
@@ -1138,8 +1145,15 @@ This will take some hours and use 10GB of disk space."
 (defvar imdb-buffers nil)
 
 (defun imdb-url-retrieve (url callback &optional cbargs silent inhibit-cookies)
-  (let ((buffer (url-retrieve url callback cbargs silent inhibit-cookies)))
-    (push buffer imdb-buffers)))
+  (let ((cache (url-cache-create-filename url)))
+    (if (file-exists-p cache)
+	(with-current-buffer (generate-new-buffer " *imdb url cache*")
+	  (erase-buffer)
+	  (set-buffer-multibyte nil)
+	  (insert-file-contents-literally cache)
+	  (apply callback t cbargs))
+      (let ((buffer (url-retrieve url callback cbargs silent inhibit-cookies)))
+	(push buffer imdb-buffers)))))
 
 (defun imdb-kill ()
   (dolist (buffer imdb-buffers)

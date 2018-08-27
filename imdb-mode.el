@@ -707,7 +707,7 @@ This will take some hours and use 10GB of disk space."
 		  (:foreground "#b0b0b0")))))
       (when (getf film :type)
 	(when genres
-	  (insert " "))
+	  (insert (propertize " " 'face 'variable-pitch)))
 	(insert 
 	 (propertize (format "(%s)" (imdb-display-type (getf film :type)))
 		     'face '(variable-pitch
@@ -730,13 +730,13 @@ This will take some hours and use 10GB of disk space."
 			       (t 5))))))
       (insert (propertize
 	       (format
-		"%s %s%s\n"
+		"%s%s%s\n"
 		(propertize
 		 (getf (car (imdb-select 'person :pid (getf person :pid)))
 		       :primary-name)
 		 'face 'variable-pitch)
 		(propertize
-		 (format "(%s)" (imdb-display-type (getf person :category)))
+		 (format " (%s)" (imdb-display-type (getf person :category)))
 		 'face '(variable-pitch (:foreground "#c0c0c0")))
 		(let ((characters (imdb-select 'principal-character
 					       :mid id

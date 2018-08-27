@@ -496,7 +496,7 @@ This will take some hours and use 10GB of disk space."
 	match)
     (save-excursion
       (goto-char (point-min))
-      (while (setq match (text-property-search-forward 'mark t))
+      (while (setq match (text-property-search-forward 'mark t t))
 	(push (get-text-property (prop-match-beginning match) 'id) pids)))
     (unless pids
       (error "No marked people"))

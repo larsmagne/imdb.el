@@ -47,6 +47,7 @@
 
 (defvar imdb-mode-extra-data nil)
 (defvar imdb-mode-filter-insignificant nil)
+(defvar imdb-mode-filter-job nil)
 (defvar imdb-mode-mode 'film-search)
 (defvar imdb-mode-search nil)
 
@@ -440,6 +441,8 @@ This will take some hours and use 10GB of disk space."
     (define-key map "f" 'imdb-mode-search-film)
     (define-key map "p" 'imdb-mode-search-person)
     (define-key map "x" 'imdb-mode-toggle-insignificant)
+    (define-key map "a" 'imdb-mode-show-acting)
+    (define-key map "d" 'imdb-mode-show-directing)
     (define-key map "&" 'imdb-mode-open-imdb)
     (define-key map "q" 'kill-current-buffer)
     (define-key map "\r" 'imdb-mode-select)
@@ -452,6 +455,7 @@ This will take some hours and use 10GB of disk space."
   (setq buffer-read-only t)
   (buffer-disable-undo)
   (setq-local imdb-mode-filter-insignificant nil)
+  (setq-local imdb-mode-filter-job nil)
   (setq-local imdb-mode-mode 'film-search)
   (setq-local imdb-mode-search nil)
   (setq-local imdb-mode-extra-data nil)
@@ -476,6 +480,24 @@ This will take some hours and use 10GB of disk space."
 	   (if imdb-mode-filter-insignificant
 	       "filtered"
 	     "not filtered"))
+  (imdb-mode-refresh-buffer))
+
+(defun imdb-mode-show-acting ()
+  "Show only acting."
+  (interactive)
+  (setq imdb-mode-filter-job
+	(if imdb-mode-filter-job
+	    nil
+	  'acting))
+  (imdb-mode-refresh-buffer))
+
+(defun imdb-mode-show-directing ()
+  "Show only directing."
+  (interactive)
+  (setq imdb-mode-filter-job
+	(if imdb-mode-filter-job
+	    nil
+	  'directing))
   (imdb-mode-refresh-buffer))
 
 (defun imdb-mode-refresh-buffer ()
@@ -596,14 +618,28 @@ This will take some hours and use 10GB of disk space."
     (goto-char (point-min))))
 
 (defun imdb-mode-filter (films)
-  (if (not imdb-mode-filter-insignificant)
-      films
-    (loop for film in films
-	  when (and (getf film :start-year)
-		    (equal (getf film :type) "movie")
-		    (not (member (getf film :category)
-				 '("thanks" "miscellaneous"))))
-	  collect film)))
+  (let ((films
+	 (if (not imdb-mode-filter-insignificant)
+	     films
+	   (loop for film in films
+		 when (and (getf film :start-year)
+			   (equal (getf film :type) "movie")
+			   (not (member (getf film :category)
+					'("thanks" "miscellaneous"
+					  "camera_department"
+					  "self" "archive_footage"
+					  "sound_department"))))
+		 collect film))))
+    (if (not imdb-mode-filter-job)
+	films
+      (loop for film in films
+	    when (or (and (eq imdb-mode-filter-job 'acting)
+			  (member (getf film :category)
+				  '("actor" "actress")))
+		     (and (eq imdb-mode-filter-job 'directing)
+			  (member (getf film :category)
+				  '("director"))))
+	    collect film))))
 
 (defun imdb-mode-select ()
   "Select the item under point and display details."
@@ -1096,6 +1132,7 @@ This will take some hours and use 10GB of disk space."
     ("visual_effects" "effects")
     ("special_effects" "effects")
     ("camera_department" "camera dept")
+    ("sound_department" "sound")
     (_ type)))
 
 (defvar imdb-buffers nil)

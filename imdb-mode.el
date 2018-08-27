@@ -639,7 +639,7 @@
 	  imdb-mode-search id)
     (imdb-insert-placeholder 300 400)
     (insert "\n\n")
-    (imdb-update-image id)
+    (imdb-update-film-image id)
     (let ((directors
 	   (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
 			      id)))
@@ -735,7 +735,10 @@
 		"select movie.mid, primary_title, start_year, type, principal.category from movie inner join principal on movie.mid = principal.mid where pid = ?"
 		id)))
     (erase-buffer)
-    (setq a films)
+    (imdb-insert-placeholder 300 400)
+    (put-text-property (point-min) (point) 'id id)
+    (insert "\n\n")
+    (imdb-load-people-images (list id) (current-buffer) 300 400 0)
     (setq imdb-mode-mode 'person
 	  imdb-mode-search id)
     (dolist (film imdb-mode-extra-data)
@@ -800,13 +803,14 @@
 			   (:foreground "#80a080"))))))
       'id (getf film :mid)))))
 
-(defun imdb-update-image (id)
+(defun imdb-update-film-image (id)
   (url-retrieve
    (format "http://www.imdb.com/title/%s/" id)
    (lambda (status buffer id)
      (goto-char (point-min))
-     (when (search-forward "\n\n" nil t)
-       (imdb-update-image-1
+     (if (not (search-forward "\n\n" nil t))
+	 (imdb-placehold-film buffer)
+       (imdb-update-film-image-1
 	(loop with dom = (libxml-parse-html-region (point) (point-max))
 	      for image in (dom-by-tag dom 'img)
 	      for src = (dom-attr image 'src)
@@ -819,19 +823,30 @@
    (list (current-buffer) id)
    t))
 
-(defun imdb-update-image-1 (url buffer id)
-  (when url
+(defun imdb-placehold-film (buffer)
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+	(save-excursion
+	  (goto-char (point-min))
+	  (delete-region (point) (1+ (point)))
+	  (imdb-insert-placeholder 300 400 t))))))
+
+(defun imdb-update-film-image-1 (url buffer id)
+  (if (not url)
+      (imdb-placehold-film buffer)
     (url-retrieve
      url
      (lambda (status buffer id)
        (goto-char (point-min))
-       (imdb-update-image-2 (imdb-extract-image-json) buffer id)
+       (imdb-update-film-image-2 (imdb-extract-image-json) buffer id)
        (kill-buffer (current-buffer)))
      (list buffer id) t)))
 
-(defun imdb-update-image-2 (json buffer id)
+(defun imdb-update-film-image-2 (json buffer id)
   (let ((src (imdb-get-image-from-json json)))
-    (when src
+    (if (not src)
+	(imdb-placehold-film buffer)
       (url-retrieve
        src
        (lambda (status buffer id)
@@ -915,14 +930,15 @@
 			  (setcdr (nthcdr 10 people) nil)
 			  people)
 		      people))
-	    buffer)))))
+	    buffer
+	    100 150 3)))))
    (list buffer)))
 
-(defun imdb-load-people-images (pids buffer)
+(defun imdb-load-people-images (pids buffer width height newlines)
   (let ((pid (pop pids)))
     (url-retrieve
      (format "https://www.imdb.com/name/%s/" pid)
-     (lambda (status pid pids buffer)
+     (lambda (status pid pids buffer width height newlines)
        (goto-char (point-min))
        (when (search-forward "\n\n" nil t)
 	 (let* ((dom (libxml-parse-html-region (point) (point-max)))
@@ -930,39 +946,47 @@
 					   'img)
 			       'src)))
 	   (if img
-	       (url-retrieve img 'imdb-load-people-image (list pid buffer))
+	       (url-retrieve img 'imdb-load-people-image
+			     (list pid buffer width height newlines))
 	     (when (buffer-live-p buffer)
 	       (with-current-buffer buffer
 		 (let ((inhibit-read-only t)
 		       match)
 		   (save-excursion
 		     (goto-char (point-min))
-		     (when (and (search-forward "\n\n" nil t 3)
-				(setq match (text-property-search-forward
-					     'id pid t)))
+		     (search-forward "\n\n" nil t newlines)
+		     (when (setq match (text-property-search-forward
+					'id pid t))
 		       (goto-char (prop-match-beginning match))
-		       (delete-region (point) (1+ (point)))
-		       (imdb-insert-placeholder 100 150 t)))))))
+		       (let ((id (get-text-property (point) 'id))
+			     (start (point)))
+			 (delete-region (point) (1+ (point)))
+			 (imdb-insert-placeholder width height t)
+			 (put-text-property start (point) 'id id))))))))
 	   (when pids
-	     (imdb-load-people-images pids buffer))))
+	     (imdb-load-people-images pids buffer width height newlines))))
        (kill-buffer (current-buffer)))
-     (list pid pids buffer))))
+     (list pid pids buffer width height newlines))))
 
-(defun imdb-load-people-image (status pid buffer)
+(defun imdb-load-people-image (status pid buffer width height newlines)
   (goto-char (point-min))
   (when (search-forward "\n\n" nil t)
-    (let ((data (buffer-substring (point) (point-max))))
+    (let ((data (buffer-substring (point) (point-max)))
+	  match)
       (when (buffer-live-p buffer)
 	(with-current-buffer buffer
 	  (let ((inhibit-read-only t))
 	    (save-excursion
 	      (goto-char (point-min))
-	      (when (and (search-forward "\n\n" nil t 3)
-			 (setq match (text-property-search-forward 'id pid t)))
+	      (search-forward "\n\n" nil t newlines)
+	      (when (setq match (text-property-search-forward 'id pid t))
 		(goto-char (prop-match-beginning match))
-		(delete-region (point) (1+ (point)))
-		(insert-image
-		 (create-image data 'imagemagick t :height 150)))))))))
+		(let ((id (get-text-property (point) 'id))
+		      (start (point)))
+		  (delete-region (point) (1+ (point)))
+		  (insert-image
+		   (create-image data 'imagemagick t :height height))
+		  (put-text-property start (point) 'id id)))))))))
   (kill-buffer (current-buffer)))
 
 (defun imdb-person-update-films (pid)
@@ -1010,6 +1034,7 @@
 	     (save-excursion
 	       (dolist (film films)
 		 (goto-char (point-min))
+		 (forward-line 2)
 		 (unless (text-property-search-forward 'id (getf film :mid) t)
 		   (if (not (getf film :start-year))
 		       (goto-char (point-max))
@@ -1026,9 +1051,13 @@
   (pcase type
     ("tvSeries" "tv series")
     ("tvMovie" "tv movie")
+    ("tvShort" "tv short")
     ("tvMiniSeries" "tv mini series")
     ("archive_footage" "footage")
     (_ type)))
+
+(defun imdb-update-person-image (id)
+  )
 
 (provide 'imdb-mode)
 

@@ -226,7 +226,7 @@ This will take some hours and use 10GB of disk space."
 	  (total (count-lines (point-min) (point-max))))
       (while (not (eobp))
 	(when (zerop (% (incf lines) 1000))
-	  (message "Read %d lines (%.1f%%)" lines
+	  (message "%s: Read %d lines (%.1f%%)" file lines
 		   (* (/ (* lines 1.0) total) 100)))
 	(funcall function (imdb-read-line))
 	(forward-line 1)))

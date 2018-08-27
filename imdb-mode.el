@@ -478,8 +478,8 @@ This will take some hours and use 10GB of disk space."
 	(not imdb-mode-filter-insignificant))
   (message "Unimportant items are now %s"
 	   (if imdb-mode-filter-insignificant
-	       "not filtered"
-	     "filtered"))
+	       "filtered"
+	     "not filtered"))
   (imdb-mode-refresh-buffer))
 
 (defun imdb-mode-show-acting ()
@@ -824,6 +824,7 @@ This will take some hours and use 10GB of disk space."
     (imdb-load-people-images (list id) (current-buffer) 300 400 0)
     (setq imdb-mode-mode 'person
 	  imdb-mode-search id)
+    ;; Add the extra films from the web.
     (dolist (film imdb-mode-extra-data)
       (unless (cl-member film films
 			 :test (lambda (e1 e2)
@@ -832,7 +833,7 @@ This will take some hours and use 10GB of disk space."
     (setq films (cl-sort
 		 (reverse films) '<
 		 :key (lambda (e)
-			(or (getf e :start-year) most-positive-fixnum))))
+			(or (getf e :start-year) 1.0e+INF))))
     (setq films (imdb-mode-filter films))
     (dolist (film films)
       (imdb-mode-person-film film id))

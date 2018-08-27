@@ -97,8 +97,7 @@
     (principal-character
      (mid text :references movie)
      (pid text :references person)
-     (character text))    
-    ))
+     (character text))))
 
 (defun imdb-dehyphenate (elem)
   (replace-regexp-in-string "-" "_" (symbol-name elem)))
@@ -193,6 +192,7 @@
 (defun imdb-read-data ()
   (with-temp-buffer
     (sqlite3-execute-batch imdb-db "delete from movie")
+    (sqlite3-execute-batch imdb-db "delete from movie_genre")
     (sqlite3-transaction imdb-db)
     (insert-file-contents "~/.emacs.d/imdb/title.basics.tsv")
     (forward-line 1)
@@ -214,6 +214,8 @@
 
   (with-temp-buffer
     (sqlite3-execute-batch imdb-db "delete from person")
+    (sqlite3-execute-batch imdb-db "delete from person_profession")
+    (sqlite3-execute-batch imdb-db "delete from person_known_for")
     (sqlite3-transaction imdb-db)
     (insert-file-contents "~/.emacs.d/imdb/name.basics.tsv")
     (forward-line 1)
@@ -269,6 +271,7 @@
 
   (with-temp-buffer
     (sqlite3-execute-batch imdb-db "delete from principal")
+    (sqlite3-execute-batch imdb-db "delete from principal_character")
     (sqlite3-transaction imdb-db)
     (insert-file-contents "~/.emacs.d/imdb/title.principals.tsv")
     (forward-line 1)
@@ -416,6 +419,7 @@
     (define-key map "p" 'imdb-mode-search-person)
     (define-key map "x" 'imdb-mode-toggle-insignificant)
     (define-key map "&" 'imdb-mode-open-imdb)
+    (define-key map "q" 'kill-current-buffer)
     (define-key map "\r" 'imdb-mode-select)
     map))
 
@@ -626,7 +630,8 @@
   (switch-to-buffer (format "*imdb %s*"
 			    (getf (car (imdb-select 'movie :mid id))
 				  :primary-title)))
-  (let ((inhibit-read-only t))
+  (let ((inhibit-read-only t)
+	(film (car (imdb-select 'movie :mid id))))
     (erase-buffer)
     (imdb-mode)
     (setq imdb-mode-mode 'film
@@ -653,9 +658,35 @@
     (let ((rating (car (imdb-select 'rating :mid id))))
       (when rating
 	(insert
-	 (propertize (format "Rating %s/%s votes" (getf rating :rating)
-			     (getf rating :votes)))
-	 "\n")))
+	 (propertize (format "Rating %s / %s votes"
+			     (getf rating :rating)
+			     (getf rating :votes))
+		     'face '(variable-pitch
+			     (:foreground "#b0b0b0"))))))
+    (when (getf film :length)
+      (insert 
+       (propertize (format " / %d mins" (getf film :length))
+		   'face '(variable-pitch
+			   (:foreground "#b0b0b0")))))
+    (insert "\n")
+
+    (let ((genres (imdb-select 'movie-genre :mid id)))
+      (when genres
+	(insert 
+	 (propertize
+	  (mapconcat (lambda (e) (getf e :genre)) genres ", ")
+	  'face '(variable-pitch
+		  (:foreground "#b0b0b0")))))
+      (when (getf film :type)
+	(when genres
+	  (insert " "))
+	(insert 
+	 (propertize (format "(%s)" (getf film :type))
+		     'face '(variable-pitch
+			     (:foreground "#b0b0b0")))))
+      (when (or (getf film :type)
+		genres)
+	(insert "\n")))
 
     (insert "\n")
     

@@ -101,7 +101,6 @@
 (defun imdb-hyphenate (elem)
   (replace-regexp-in-string "_" "-" elem))
 
-
 (defun imdb-download-data ()
   (let ((dom
 	 (with-current-buffer (url-retrieve-synchronously "https://datasets.imdbws.com/")
@@ -411,6 +410,7 @@
     (define-key map "f" 'imdb-mode-search-film)
     (define-key map "p" 'imdb-mode-search-person)
     (define-key map "x" 'imdb-mode-toggle-insignificant)
+    (define-key map "&" 'imdb-mode-open-imdb)
     (define-key map "\r" 'imdb-mode-select)
     map))
 
@@ -454,7 +454,7 @@
 		     do (forward-line 1)))))
   (cond
    ((eq imdb-mode-mode 'film-search)
-    (imdb-mode-search-film imdb-mode-search))
+    (imdb-mode-search-film-1 imdb-mode-search))
    ((eq imdb-mode-mode 'person)
     (imdb-mode-display-person imdb-mode-search)))
   (if (not ids)
@@ -477,13 +477,19 @@
 (defun imdb-mode-search-film (film)
   "List films matching FILM."
   (interactive "sFilm: ")
-  (imdb-initialize)
+  (switch-to-buffer (format "*imdb %s*" film))
+  (let ((inhibit-read-only t))
+    (imdb-mode)
+    (setq imdb-mode-mode 'film-search
+	  imdb-mode-search film)
+    (erase-buffer)
+    (imdb-mode-search-film-1 film)))
+
+(defun imdb-mode-search-film-1 (film)
   (let ((films (imdb-select-where
 		"select * from movie where lower(primary_title) like ?"
 		(format "%%%s%%" film)))
 	(inhibit-read-only t))
-    (setq imdb-mode-mode 'film-search
-	  imdb-mode-search film)
     (erase-buffer)
     (setq films (imdb-mode-filter films))
     (unless films
@@ -494,7 +500,7 @@
 				      most-positive-fixnum))))
       (insert
        (propertize
-	(format "%s %s%s%s\n"
+	(format "%s %s%s%s%s\n"
 		(propertize (format "%s" (getf film :start-year))
 			    'face 'variable-pitch)
 		(propertize " " 'display '(space :align-to 8))
@@ -503,7 +509,18 @@
 		    ""
 		  (propertize (format " (%s)" (getf film :type))
 			      'face '(variable-pitch
-				      (:foreground "#80a080")))))
+				      (:foreground "#80a080"))))
+		(let ((directors
+		       (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
+					  (getf film :mid))))
+		  (if (not directors)
+		      ""
+		    (propertize
+		     (concat " " (mapconcat (lambda (e)
+					      (getf e :primary-name))
+					    directors ", "))
+		     'face '(variable-pitch
+			     (:foreground "#80a080"))))))
 	'id (getf film :mid))))
     (goto-char (point-min))))
 
@@ -568,6 +585,36 @@
       (let ((inhibit-read-only t))
 	(imdb-mode)
 	(imdb-mode-display-person id))))))
+
+(defun imdb-mode-open-imdb ()
+  "Open the item under point in a web browser."
+  (interactive)
+  (let ((id (get-text-property (point) 'id)))
+    (unless id
+      (cond
+       ((eq imdb-mode-mode 'person)
+	(imdb-mode-open-person-in-imdb imdb-mode-search))
+       ((eq imdb-mode-mode 'person)
+	(imdb-mode-open-film-in-imdb imdb-mode-search))
+       (t
+	(error "Nothing under point"))))
+    (cond
+     ((or (eq imdb-mode-mode 'film-search)
+	  (eq imdb-mode-mode 'person))
+      (imdb-mode-open-film-in-imdb id))
+     ((or (eq imdb-mode-mode 'people-search)
+	  (eq imdb-mode-mode 'film))
+      (imdb-mode-open-person-in-imdb id)))))
+
+(require 'browse-url)
+
+(defun imdb-mode-open-person-in-imdb (id)
+  (browse-url-default-browser
+   (format "https://www.imdb.com/name/%s/" id)))
+
+(defun imdb-mode-open-film-in-imdb (id)
+  (browse-url-default-browser
+   (format "https://www.imdb.com/title/%s/" id)))
 
 (defun imdb-mode-display-film (id)
   (switch-to-buffer (format "*imdb %s*"
@@ -656,37 +703,40 @@
 			(or (getf e :start-year) most-positive-fixnum))))
     (setq films (imdb-mode-filter films))
     (dolist (film films)
-      (unless (equal (getf film :type) "tvEpisode") 
-	(insert
-	 (propertize
-	  (format "%s %s%s%s%s%s\n"
-		  (propertize
-		   (format "%s" (or (getf film :start-year) ""))
-		   'face 'variable-pitch)
-		  (propertize " " 'display '(space :align-to 8))
-		  (propertize (getf film :primary-title)
-			      'face 'variable-pitch)
-		  (if (equal (getf film :type) "movie")
-		      ""
-		    (propertize (format " (%s)" (getf film :type))
-				'face '(variable-pitch
-					(:foreground "#a0a0a0"))))
-		  (propertize (format " (%s)" (getf film :category))
-			      'face '(variable-pitch
-				      (:foreground "#c0c0c0")))
-		  (let ((directors
-			 (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
-					    (getf film :mid))))
-		    (if (not directors)
-			""
-		      (propertize
-		       (concat " " (mapconcat (lambda (e)
-						(getf e :primary-name))
-					      directors ", "))
-		       'face '(variable-pitch
-			       (:foreground "#80a080"))))))
-	  'id (getf film :mid)))))
+      (imdb-mode-person-film film))
     (goto-char (point-min))))
+
+(defun imdb-mode-person-film (film)
+  (unless (equal (getf film :type) "tvEpisode") 
+    (insert
+     (propertize
+      (format "%s %s%s%s%s%s\n"
+	      (propertize
+	       (format "%s" (or (getf film :start-year) ""))
+	       'face 'variable-pitch)
+	      (propertize " " 'display '(space :align-to 8))
+	      (propertize (getf film :primary-title)
+			  'face 'variable-pitch)
+	      (if (equal (getf film :type) "movie")
+		  ""
+		(propertize (format " (%s)" (getf film :type))
+			    'face '(variable-pitch
+				    (:foreground "#a0a0a0"))))
+	      (propertize (format " (%s)" (getf film :category))
+			  'face '(variable-pitch
+				  (:foreground "#c0c0c0")))
+	      (let ((directors
+		     (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
+					(getf film :mid))))
+		(if (not directors)
+		    ""
+		  (propertize
+		   (concat " " (mapconcat (lambda (e)
+					    (getf e :primary-name))
+					  directors ", "))
+		   'face '(variable-pitch
+			   (:foreground "#80a080"))))))
+      'id (getf film :mid)))))
 
 (defun imdb-update-image (id)
   (url-retrieve
@@ -751,7 +801,7 @@
     (insert-image (svg-image svg))))
 
 (defun imdb-clean (string)
-  (string-trim (replace-regexp-in-string "[ \t\n]+" " " string)))
+  (string-trim (replace-regexp-in-string "[  \t\n]+" " " string)))
 
 (defun imdb-get-actors (mid buffer)
   (url-retrieve
@@ -855,7 +905,51 @@
 		(insert-image
 		 (create-image data 'imagemagick t :height 150)))))))))
   (kill-buffer (current-buffer)))
-	  
+
+(defun imdb-person-update-films (pid)
+  (url-retrieve
+   (format "https://www.imdb.com/name/%s/" pid)
+   (lambda (status buffer)
+     (goto-char (point-min))
+     (when (search-forward "\n\n" nil t)
+       (let* ((dom (libxml-parse-html-region (point) (point-max)))
+	      (films
+	       (loop for elem in (dom-by-class dom "\\`filmo-row")
+		     for link = (dom-by-tag elem 'a)
+		     for href = (dom-attr link 'href)
+		     for character = (car (last (dom-children elem)))
+		     for year = (dom-by-class elem "\\`year")
+		     when (and href year 
+			       (string-match "/title/\\([^/]+\\)" href))
+		     collect
+		     (list :mid (match-string 1 href)
+			   :primary-title (imdb-clean (dom-texts link))
+			   :start-year
+			   (string-to-number
+			    (car (split-string
+				  (imdb-clean (dom-texts year)) "/")))
+			   :job (car (split-string (dom-attr elem 'id) "-"))
+			   :character (and (stringp character)
+					   (imdb-clean character))))))
+	 (setq films (cl-sort (nreverse films) '<
+			      :key (lambda (elem)
+				     (or (getf elem :year) 1.0e+INF))))
+	 (with-current-buffer buffer
+	   (let ((inhibit-read-only t))
+	     (save-excursion
+	       (dolist (film films)
+		 (goto-char (point-min))
+		 (unless (text-property-search-forward 'id (getf film :mid) t)
+		   (if (not (getf film :start-year))
+		       (goto-char (point-max))
+		     (while (and (looking-at "[0-9]+")
+				 (let ((year (string-to-number
+					      (match-string 0))))
+				   (<= year (getf film :start-year))))
+		       (forward-line 1)))
+		   (imdb-mode-person-film film))))))))
+     (kill-buffer (current-buffer)))
+   (list (current-buffer))))
 
 (provide 'imdb-mode)
 

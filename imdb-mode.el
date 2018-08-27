@@ -214,116 +214,11 @@ This will take some hours and use 10GB of disk space."
 		    nil
 		  elem)))
 
-(defun imdb-read-data ()
+(defun imdb-read (tables file function)
   (with-temp-buffer
-    (sqlite3-execute-batch imdb-db "delete from movie")
-    (sqlite3-execute-batch imdb-db "delete from movie_genre")
-    (sqlite3-transaction imdb-db)
-    (insert-file-contents "~/.emacs.d/imdb/title.basics.tsv")
-    (forward-line 1)
-    (let ((lines 1)
-	  (total (count-lines (point-min) (point-max))))
-      (while (not (eobp))
-	(when (zerop (% (incf lines) 1000))
-	  (message "Read %d lines (%.1f%%)" lines
-		   (* (/ (* lines 1.0) total) 100)))
-	(let* ((elem (imdb-read-line))
-	       (object (imdb-make 'movie elem)))
-	  (imdb-insert object)
-	  (when (car (last elem))
-	    (loop for genre in (split-string (car (last elem)) ",")
-		  do (imdb-insert (imdb-make 'movie-genre
-					     (list (car elem) genre))))))
-	(forward-line 1)))
-    (sqlite3-commit imdb-db))
-
-  (with-temp-buffer
-    (sqlite3-execute-batch imdb-db "delete from person")
-    (sqlite3-execute-batch imdb-db "delete from person_primary_profession")
-    (sqlite3-execute-batch imdb-db "delete from person_known_for")
-    (sqlite3-transaction imdb-db)
-    (insert-file-contents "~/.emacs.d/imdb/name.basics.tsv")
-    (forward-line 1)
-    (let ((lines 1)
-	  (total (count-lines (point-min) (point-max))))
-      (while (not (eobp))
-	(when (zerop (% (incf lines) 1000))
-	  (message "Read %d lines (%.1f%%)" lines
-		   (* (/ (* lines 1.0) total) 100)))
-	(let* ((elem (imdb-read-line))
-	       (object (imdb-make 'person elem)))
-	  (imdb-insert object)
-	  (let ((professions (car (last elem 2)))
-		(known (car (last elem))))
-	    (when professions
-	      (loop for profession in (split-string professions ",")
-		    do (imdb-insert (imdb-make 'person-primary-profession
-					       (list (car elem) profession)))))
-	    (when known
-	      (loop for k in (split-string known ",")
-		    do (imdb-insert (imdb-make 'person-known-for
-					       (list (car elem) k))))))
-	  (forward-line 1)))
-      (sqlite3-commit imdb-db)))
-
-  (imdb-read-general 'title "title.akas")
-  
-  (with-temp-buffer
-    (sqlite3-execute-batch imdb-db "delete from crew")
-    (sqlite3-transaction imdb-db)
-    (insert-file-contents "~/.emacs.d/imdb/title.crew.tsv")
-    (forward-line 1)
-    (let ((lines 1)
-	  (total (count-lines (point-min) (point-max))))
-      (while (not (eobp))
-	(when (zerop (% (incf lines) 1000))
-	  (message "Read %d lines (%.1f%%)" lines
-		   (* (/ (* lines 1.0) total) 100)))
-	(let* ((elem (imdb-read-line))
-	       (directors (cadr elem))
-	       (writers (caddr elem)))
-	  (when directors
-	    (dolist (mid (split-string directors ","))
-	      (imdb-insert (imdb-make 'crew (list (car elem) mid "director")))))
-	  (when writers
-	    (dolist (mid (split-string writers ","))
-	      (imdb-insert (imdb-make 'crew (list (car elem) mid "writer")))))
-	  (forward-line 1)))
-      (sqlite3-commit imdb-db)))
-
-  (imdb-read-general 'episode "title.episode")
-  (imdb-read-general 'rating "title.ratings")
-
-  (with-temp-buffer
-    (sqlite3-execute-batch imdb-db "delete from principal")
-    (sqlite3-execute-batch imdb-db "delete from principal_character")
-    (sqlite3-transaction imdb-db)
-    (insert-file-contents "~/.emacs.d/imdb/title.principals.tsv")
-    (forward-line 1)
-    (let ((lines 1)
-	  (total (count-lines (point-min) (point-max))))
-      (while (not (eobp))
-	(when (zerop (% (incf lines) 1000))
-	  (message "Read %d lines (%.1f%%)" lines
-		   (* (/ (* lines 1.0) total) 100)))
-	(let* ((elem (imdb-read-line))
-	       (object (imdb-make 'principal elem)))
-	  (imdb-insert object)
-	  (when (car (last elem))
-	    (with-temp-buffer
-	      (insert (car (last elem)))
-	      (goto-char (point-min))
-	      (loop for character across (json-read)
-		    do (imdb-insert (imdb-make 'principal-character
-					       (list (getf object :mid)
-						     (getf object :pid)
-						     character))))))
-	  (forward-line 1)))
-      (sqlite3-commit imdb-db))))
-
-(defun imdb-read-general (table file)
-  (with-temp-buffer
-    (sqlite3-execute-batch imdb-db (format "delete from %s" table))
+    (dolist (table tables)
+      (sqlite3-execute-batch imdb-db (format "delete from %s"
+					     (imdb-dehyphenate table))))
     (sqlite3-transaction imdb-db)
     (insert-file-contents (format "~/.emacs.d/imdb/%s.tsv" file))
     (forward-line 1)
@@ -333,11 +228,73 @@ This will take some hours and use 10GB of disk space."
 	(when (zerop (% (incf lines) 1000))
 	  (message "Read %d lines (%.1f%%)" lines
 		   (* (/ (* lines 1.0) total) 100)))
-	(let* ((elem (imdb-read-line))
-	       (object (imdb-make table elem)))
-	  (imdb-insert object)
-	  (forward-line 1)))
-      (sqlite3-commit imdb-db))))
+	(funcall function (imdb-read-line))
+	(forward-line 1)))
+    (sqlite3-commit imdb-db)))
+
+(defun imdb-read-data ()
+  (imdb-read
+   '(movie movie-genre) "title.basics"
+   (lambda (elem)
+     (imdb-insert (imdb-make 'movie elem))
+     (when (car (last elem))
+       (loop for genre in (split-string (car (last elem)) ",")
+	     do (imdb-insert (imdb-make 'movie-genre
+					(list (car elem) genre)))))))
+
+  (imdb-read
+   '(person person-primary-profession person-known-for)
+   "name.basics"
+   (lambda (elem)
+     (imdb-insert (imdb-make 'person elem))
+     (let ((professions (car (last elem 2)))
+	   (known (car (last elem))))
+       (when professions
+	 (loop for profession in (split-string professions ",")
+	       do (imdb-insert (imdb-make 'person-primary-profession
+					  (list (car elem) profession)))))
+       (when known
+	 (loop for k in (split-string known ",")
+	       do (imdb-insert (imdb-make 'person-known-for
+					  (list (car elem) k))))))))
+
+  (imdb-read-general 'title "title.akas")
+
+  (imdb-read
+   '(crew) "title.crew"
+   (lambda (elem)
+     (let ((directors (cadr elem))
+	   (writers (caddr elem)))
+       (when directors
+	 (dolist (mid (split-string directors ","))
+	   (imdb-insert (imdb-make 'crew (list (car elem) mid "director")))))
+       (when writers
+	 (dolist (mid (split-string writers ","))
+	   (imdb-insert (imdb-make 'crew (list (car elem) mid "writer"))))))))
+
+  (imdb-read-general 'episode "title.episode")
+  (imdb-read-general 'rating "title.ratings")
+
+  (imdb-read
+   '(principal principal-character) "title.principals"
+   (lambda (elem)
+     (let* ((object (imdb-make 'principal elem)))
+       (imdb-insert object)
+       (when (car (last elem))
+	 (with-temp-buffer
+	   (insert (car (last elem)))
+	   (goto-char (point-min))
+	   (loop for character across (json-read)
+		 do (imdb-insert (imdb-make 'principal-character
+					    (list (getf object :mid)
+						  (getf object :pid)
+						  character))))))))))
+
+(defun imdb-read-general (table file)
+  (imdb-read
+   (list table) file
+   (lambda (elem)
+     (imdb-insert (imdb-make table elem)))))
 
 (defun imdb-make (table values)
   (nconc (list :_type table)

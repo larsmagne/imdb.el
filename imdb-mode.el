@@ -754,6 +754,7 @@
     (dolist (film films)
       (imdb-mode-person-film film id))
     (goto-char (point-min))
+    (forward-line 1)
     (imdb-person-update-films id)))
 
 (defun imdb-mode-person-film (film pid)

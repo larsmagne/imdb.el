@@ -214,7 +214,7 @@ This will take some hours and use 10GB of disk space."
 		    nil
 		  elem)))
 
-(defun imdb-read (tables file function)
+(defun imdb-read-tsv (tables file function)
   (with-temp-buffer
     (dolist (table tables)
       (sqlite3-execute-batch imdb-db (format "delete from %s"
@@ -232,8 +232,14 @@ This will take some hours and use 10GB of disk space."
 	(forward-line 1)))
     (sqlite3-commit imdb-db)))
 
+(defun imdb-read-simple (table file)
+  (imdb-read-tsv
+   (list table) file
+   (lambda (elem)
+     (imdb-insert (imdb-make table elem)))))
+
 (defun imdb-read-data ()
-  (imdb-read
+  (imdb-read-tsv
    '(movie movie-genre) "title.basics"
    (lambda (elem)
      (imdb-insert (imdb-make 'movie elem))
@@ -242,7 +248,7 @@ This will take some hours and use 10GB of disk space."
 	     do (imdb-insert (imdb-make 'movie-genre
 					(list (car elem) genre)))))))
 
-  (imdb-read
+  (imdb-read-tsv
    '(person person-primary-profession person-known-for)
    "name.basics"
    (lambda (elem)
@@ -258,9 +264,9 @@ This will take some hours and use 10GB of disk space."
 	       do (imdb-insert (imdb-make 'person-known-for
 					  (list (car elem) k))))))))
 
-  (imdb-read-general 'title "title.akas")
+  (imdb-read-simple 'title "title.akas")
 
-  (imdb-read
+  (imdb-read-tsv
    '(crew) "title.crew"
    (lambda (elem)
      (let ((directors (cadr elem))
@@ -272,10 +278,10 @@ This will take some hours and use 10GB of disk space."
 	 (dolist (mid (split-string writers ","))
 	   (imdb-insert (imdb-make 'crew (list (car elem) mid "writer"))))))))
 
-  (imdb-read-general 'episode "title.episode")
-  (imdb-read-general 'rating "title.ratings")
+  (imdb-read-simple 'episode "title.episode")
+  (imdb-read-simple 'rating "title.ratings")
 
-  (imdb-read
+  (imdb-read-tsv
    '(principal principal-character) "title.principals"
    (lambda (elem)
      (let* ((object (imdb-make 'principal elem)))
@@ -289,12 +295,6 @@ This will take some hours and use 10GB of disk space."
 					    (list (getf object :mid)
 						  (getf object :pid)
 						  character))))))))))
-
-(defun imdb-read-general (table file)
-  (imdb-read
-   (list table) file
-   (lambda (elem)
-     (imdb-insert (imdb-make table elem)))))
 
 (defun imdb-make (table values)
   (nconc (list :_type table)

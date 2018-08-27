@@ -190,20 +190,21 @@ This will take some hours and use 10GB of disk space."
 					 ""))))
 		      ", "))))
 
-  (sqlite3-execute-batch
-   imdb-db "create index if not exists pcidx on principal_character(mid, pid)")
-  (sqlite3-execute-batch
-   imdb-db "create index if not exists mgidx on movie_genre(mid)")
-  (sqlite3-execute-batch
-   imdb-db "create index if not exists pppidx on person_primary_profession(pid)")
-  (sqlite3-execute-batch
-   imdb-db "create index if not exists pkfidx on person_known_for(pid)")
-  (sqlite3-execute-batch imdb-db "create index if not exists tidx on title(mid)")
-  (sqlite3-execute-batch imdb-db "create index if not exists cidx on crew(mid, pid)")
-  (sqlite3-execute-batch imdb-db "create index if not exists eidx on episode(movie)")
-  (sqlite3-execute-batch imdb-db "create index if not exists pidx on principal(mid, pid)")
-  (sqlite3-execute-batch imdb-db "create index if not exists ppidx on principal(pid)")
-  )
+  (imdb-create-index
+   "pcidx on principal_character(mid, pid)"
+   "mgidx on movie_genre(mid)"
+   "pppidx on person_primary_profession(pid)"
+   "pkfidx on person_known_for(pid)"
+   "tidx on title(mid)"
+   "cidx on crew(mid, pid)"
+   "eidx on episode(movie)"
+   "pidx on principal(mid, pid)"
+   "ppidx on principal(pid)"))
+
+(defun imdb-create-index (&rest statements)
+  (dolist (statement statements)
+    (sqlite3-execute-batch
+     imdb-db (concat "create index if not exists " statement))))
 
 (defun imdb-read-line ()
   (loop for elem in (split-string

@@ -478,8 +478,8 @@ This will take some hours and use 10GB of disk space."
 	(not imdb-mode-filter-insignificant))
   (message "Unimportant items are now %s"
 	   (if imdb-mode-filter-insignificant
-	       "filtered"
-	     "not filtered"))
+	       "not filtered"
+	     "filtered"))
   (imdb-mode-refresh-buffer))
 
 (defun imdb-mode-show-acting ()
@@ -489,6 +489,10 @@ This will take some hours and use 10GB of disk space."
 	(if (eq imdb-mode-filter-job 'acting)
 	    nil
 	  'acting))
+  (message
+   (if imdb-mode-filter-job
+       "Only showing acting"
+     "Showing all jobs"))
   (imdb-mode-refresh-buffer))
 
 (defun imdb-mode-show-directing ()
@@ -498,6 +502,10 @@ This will take some hours and use 10GB of disk space."
 	(if (eq imdb-mode-filter-job 'directing)
 	    nil
 	  'directing))
+  (message
+   (if imdb-mode-filter-job
+       "Only showing directing"
+     "Showing all jobs"))
   (imdb-mode-refresh-buffer))
 
 (defun imdb-mode-refresh-buffer ()

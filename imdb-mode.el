@@ -940,7 +940,8 @@ This will take some hours and use 10GB of disk space."
 				   :character (imdb-clean
 					       (dom-texts
 						(dom-by-class
-						 line "character")))))))
+						 line "character"))))))
+	      updates)
 	 (with-current-buffer buffer
 	   (save-excursion
 	     (goto-char (point-max))
@@ -948,7 +949,10 @@ This will take some hours and use 10GB of disk space."
 	       (insert "\n")
 	       (dolist (person people)
 		 (let ((start (point)))
-		   (imdb-insert-placeholder 100 150)
+		   (if (> (length updates) 10)
+		       (imdb-insert-placeholder 100 150 t)
+		     (push person updates)
+		     (imdb-insert-placeholder 100 150))
 		   (insert
 		    (format "%s%s\n"
 			    (propertize (getf person :name)
@@ -964,14 +968,8 @@ This will take some hours and use 10GB of disk space."
 	 (kill-buffer (current-buffer))
 	 (when people
 	   (imdb-load-people-images
-	    (mapcar (lambda (e) (getf e :pid))
-		    (if (> (length people) 10)
-			(progn
-			  (setcdr (nthcdr 10 people) nil)
-			  people)
-		      people))
-	    buffer
-	    100 150 3)))))
+	    (mapcar (lambda (e) (getf e :pid)) (nreverse updates))
+	    buffer 100 150 3)))))
    (list buffer) t))
 
 (defun imdb-load-people-images (pids buffer width height newlines)
@@ -1092,6 +1090,7 @@ This will take some hours and use 10GB of disk space."
     ("tvSeries" "tv series")
     ("tvMovie" "tv movie")
     ("tvShort" "tv short")
+    ("tvSpecial" "tv special")
     ("tvMiniSeries" "tv mini series")
     ("archive_footage" "footage")
     ("visual_effects" "effects")

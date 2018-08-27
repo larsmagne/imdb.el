@@ -609,6 +609,8 @@ This will take some hours and use 10GB of disk space."
   (cond
    ((eq imdb-mode-mode 'film-search)
     (imdb-mode-search-film-1 imdb-mode-search))
+   ((eq imdb-mode-mode 'intersection)
+    (imdb-mode-display-intersection-1 imdb-mode-search))
    ((eq imdb-mode-mode 'person)
     (imdb-mode-display-person imdb-mode-search)))
   (if (not ids)

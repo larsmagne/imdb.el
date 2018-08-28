@@ -41,6 +41,8 @@
 ;; This will take several hours and use 10GB of disk space.  Emacs
 ;; will not be usable while this is going on.
 
+;; Usage: `M-x imdb-person' or `M-x imdb-film'
+
 ;;; Code:
 
 (eval-when-compile

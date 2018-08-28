@@ -372,13 +372,17 @@ This will take some hours and use 10GB of disk space."
      statement
      (coerce values 'vector)
      (lambda (row names)
-       (push (nconc (loop for value in row
-			  for column in names
-			  append (list
-				  (intern (format ":%s" (imdb-hyphenate column))
-					  obarray)
-				  value)))
-	     result)))
+       (push
+	(nconc (loop for value in row
+		     for column in names
+		     append (list
+			     (intern (format ":%s"
+					     (imdb-hyphenate
+					      (replace-regexp-in-string
+					       "[^_a-zA-Z0-9]" "" column)))
+				     obarray)
+			     value)))
+	result)))
     (nreverse result)))
 
 (defun imdb-find (table &rest values)
@@ -986,11 +990,27 @@ This will take some hours and use 10GB of disk space."
 	      (imdb-face (or (getf film :start-year) ""))
 	      (propertize " " 'display '(space :align-to 8))
 	      (imdb-face (getf film :primary-title))
-	      (if (equal (getf film :type) "movie")
-		  ""
+	      (cond
+	       ((equal (getf film :type) "movie")
+		"")
+	       ((equal (getf film :type) "tvSeries")
+		(let ((count
+		       (car
+			(imdb-select-where
+			 "select count(*) from movie inner join episode on movie.mid = episode.mid inner join principal_character on principal_character.mid = movie.mid where episode.movie = ? and principal_character.pid = ?"
+			 (getf film :mid)
+			 pid))))
+		  (if (plusp (getf count :count))
+		      (format " (tv series, %s episode%s)"
+			      (getf count :count)
+			      (if (> (getf count :count) 1)
+				  "s"
+				""))
+		    (format " (tv series)"))))
+	       (t
 		(imdb-face (format " (%s)" (imdb-display-type
 					    (getf film :type)))
-			   "#a0a0a0"))
+			   "#a0a0a0")))
 	      (imdb-face (format " (%s)" (imdb-display-type
 					  (getf film :category)))
 			 "#c0c0c0")

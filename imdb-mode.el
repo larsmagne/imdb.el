@@ -798,12 +798,14 @@ This will take some hours and use 10GB of disk space."
 			     (getf rating :rating)
 			     (getf rating :votes))
 		     'face '(variable-pitch
+			     (:foreground "#b0b0b0")))))
+      (when (getf film :length)
+	(when rating
+	  (insert (propertize " / " 'face 'variable-pitch)))
+	(insert 
+	 (propertize (format "%d mins" (getf film :length))
+		     'face '(variable-pitch
 			     (:foreground "#b0b0b0"))))))
-    (when (getf film :length)
-      (insert 
-       (propertize (format " / %d mins" (getf film :length))
-		   'face '(variable-pitch
-			   (:foreground "#b0b0b0")))))
     (insert "\n")
 
     (let ((genres (imdb-select 'movie-genre :mid id)))

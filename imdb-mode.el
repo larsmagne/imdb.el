@@ -27,7 +27,7 @@
 ;; https://github.com/syohex/emacs-sqlite3
 ;; which needs:
 
-;; sudo apt install libsqlite3-pcre libsqlite3-dev
+;; sudo apt install sqlite3-pcre libsqlite3-dev
 
 ;; The Emacs has to be pretty new -- anything older than Emacs 26
 ;; probably won't work.  And it has to be built with module support.

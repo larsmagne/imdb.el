@@ -943,24 +943,24 @@ This will take some hours and use 10GB of disk space."
       'id (getf film :mid)))))
 
 (defun imdb-update-film-image (id)
-  (imdb-url-retrieve
-   (format "http://www.imdb.com/title/%s/" id)
-   (lambda (_ buffer)
-     (goto-char (point-min))
-     (if (not (search-forward "\n\n" nil t))
-	 (imdb-placehold-film buffer)
-       (url-store-in-cache)
-       (imdb-update-film-image-1
-	(loop with dom = (libxml-parse-html-region (point) (point-max))
-	      for image in (dom-by-tag dom 'img)
-	      for src = (dom-attr image 'src)
-	      when (and src (string-match "_AL_" src))
-	      return (shr-expand-url
-		      (dom-attr (dom-parent dom image) 'href)
-		      "http://www.imdb.com/"))
-	buffer))
-     (kill-buffer (current-buffer)))
-   (list (current-buffer))))
+  (let ((buffer (current-buffer)))
+    (imdb-url-retrieve
+     (format "http://www.imdb.com/title/%s/" id)
+     (lambda (_)
+       (goto-char (point-min))
+       (if (not (search-forward "\n\n" nil t))
+	   (imdb-placehold-film buffer)
+	 (url-store-in-cache)
+	 (imdb-update-film-image-1
+	  (loop with dom = (libxml-parse-html-region (point) (point-max))
+		for image in (dom-by-tag dom 'img)
+		for src = (dom-attr image 'src)
+		when (and src (string-match "_AL_" src))
+		return (shr-expand-url
+			(dom-attr (dom-parent dom image) 'href)
+			"http://www.imdb.com/"))
+	  buffer))
+       (kill-buffer (current-buffer))))))
 
 (defun imdb-placehold-film (buffer)
   (when (buffer-live-p buffer)
@@ -976,12 +976,11 @@ This will take some hours and use 10GB of disk space."
       (imdb-placehold-film buffer)
     (imdb-url-retrieve
      url
-     (lambda (_ buffer)
+     (lambda (_)
        (url-store-in-cache)
        (goto-char (point-min))
        (imdb-update-film-image-2 (imdb-extract-image-json) buffer)
-       (kill-buffer (current-buffer)))
-     (list buffer))))
+       (kill-buffer (current-buffer))))))
 
 (defun imdb-update-film-image-2 (json buffer)
   (let ((src (imdb-get-image-from-json json)))
@@ -989,7 +988,7 @@ This will take some hours and use 10GB of disk space."
 	(imdb-placehold-film buffer)
       (imdb-url-retrieve
        src
-       (lambda (_ buffer)
+       (lambda (_)
 	 (goto-char (point-min))
 	 (when (search-forward "\n\n" nil t)
 	   (url-store-in-cache)
@@ -1002,8 +1001,7 @@ This will take some hours and use 10GB of disk space."
 		     (delete-region (point) (line-end-position))
 		     (insert-image
 		      (create-image data 'imagemagick t :height 400))))))))
-	 (kill-buffer (current-buffer)))
-       (list buffer)))))
+	 (kill-buffer (current-buffer)))))))
 
 (defun imdb-insert-placeholder (width height &optional no-gradient)
   (let* ((scale (image-compute-scaling-factor image-scaling-factor))
@@ -1022,7 +1020,7 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-get-actors (mid buffer)
   (imdb-url-retrieve
    (format "https://www.imdb.com/title/%s/fullcredits?ref_=tt_cl_sm" mid)
-   (lambda (_ buffer)
+   (lambda (_)
      (goto-char (point-min))
      (when (search-forward "\n\n" nil t)
        (url-store-in-cache)
@@ -1071,14 +1069,13 @@ This will take some hours and use 10GB of disk space."
 	 (when people
 	   (imdb-load-people-images
 	    (mapcar (lambda (e) (getf e :pid)) (nreverse updates))
-	    buffer 100 150 3)))))
-   (list buffer)))
+	    buffer 100 150 3)))))))
 
 (defun imdb-load-people-images (pids buffer width height newlines)
   (let ((pid (pop pids)))
     (imdb-url-retrieve
      (format "https://www.imdb.com/name/%s/" pid)
-     (lambda (_ pid pids buffer width height newlines)
+     (lambda (_)
        (goto-char (point-min))
        (when (search-forward "\n\n" nil t)
 	 (url-store-in-cache)
@@ -1087,8 +1084,10 @@ This will take some hours and use 10GB of disk space."
 					   'img)
 			       'src)))
 	   (if img
-	       (imdb-url-retrieve img 'imdb-load-people-image
-				  (list pid buffer height newlines))
+	       (imdb-url-retrieve
+		img 
+		(lambda (_)
+		  (imdb-load-people-image pid buffer height newlines)))
 	     (when (buffer-live-p buffer)
 	       (with-current-buffer buffer
 		 (let ((inhibit-read-only t)
@@ -1106,10 +1105,9 @@ This will take some hours and use 10GB of disk space."
 			 (put-text-property start (point) 'id id))))))))
 	   (when pids
 	     (imdb-load-people-images pids buffer width height newlines))))
-       (kill-buffer (current-buffer)))
-     (list pid pids buffer width height newlines))))
+       (kill-buffer (current-buffer))))))
 
-(defun imdb-load-people-image (_ pid buffer height newlines)
+(defun imdb-load-people-image (pid buffer height newlines)
   (goto-char (point-min))
   (when (search-forward "\n\n" nil t)
     (url-store-in-cache)
@@ -1132,63 +1130,63 @@ This will take some hours and use 10GB of disk space."
   (kill-buffer (current-buffer)))
 
 (defun imdb-person-update-films (pid)
-  (imdb-url-retrieve
-   (format "https://www.imdb.com/name/%s/" pid)
-   (lambda (_ buffer pid)
-     (goto-char (point-min))
-     (when (search-forward "\n\n" nil t)
-       (url-store-in-cache)
-       (let* ((dom (libxml-parse-html-region (point) (point-max)))
-	      (films
-	       (loop for elem in (dom-by-class dom "\\`filmo-row")
-		     for link = (dom-by-tag elem 'a)
-		     for href = (dom-attr link 'href)
-		     for character = (car (last (dom-children elem)))
-		     for year = (dom-by-class elem "\\`year")
-		     when (and href year 
-			       (string-match "/title/\\([^/]+\\)" href))
-		     collect
-		     ;; If we have the data on the film, use it.
-		     (let ((film (car (imdb-select
-				       'movie :mid (match-string 1 href)))))
-		       (if film
-			   (progn
-			     (setf (getf film :category)
-				   (car (split-string (dom-attr elem 'id) "-")))
-			     film)
-			 (list :mid (match-string 1 href)
-			       :primary-title (imdb-clean (dom-texts link))
-			       :type "movie"
-			       :start-year
-			       (string-to-number
-				(car (split-string
-				      (imdb-clean (dom-texts year)) "/")))
-			       :category
-			       (car (split-string (dom-attr elem 'id) "-"))
-			       :character (and (stringp character)
-					       (imdb-clean character))))))))
-	 (setq films (cl-sort (nreverse films) '<
-			      :key (lambda (elem)
-				     (or (getf elem :year) 1.0e+INF))))
-	 (with-current-buffer buffer
-	   (setq films (imdb-mode-filter films))
-	   (setq imdb-mode-extra-data films)
-	   (let ((inhibit-read-only t))
-	     (save-excursion
-	       (dolist (film films)
-		 (goto-char (point-min))
-		 (forward-line 4)
-		 (unless (text-property-search-forward 'id (getf film :mid) t)
-		   (if (not (getf film :start-year))
-		       (goto-char (point-max))
-		     (while (and (looking-at "[0-9]+")
-				 (let ((year (string-to-number
-					      (match-string 0))))
-				   (<= year (getf film :start-year))))
-		       (forward-line 1)))
-		   (imdb-mode-person-film film pid))))))))
-     (kill-buffer (current-buffer)))
-   (list (current-buffer) pid)))
+  (let ((buffer (current-buffer)))
+    (imdb-url-retrieve
+     (format "https://www.imdb.com/name/%s/" pid)
+     (lambda (_)
+       (goto-char (point-min))
+       (when (search-forward "\n\n" nil t)
+	 (url-store-in-cache)
+	 (let* ((dom (libxml-parse-html-region (point) (point-max)))
+		(films
+		 (loop for elem in (dom-by-class dom "\\`filmo-row")
+		       for link = (dom-by-tag elem 'a)
+		       for href = (dom-attr link 'href)
+		       for character = (car (last (dom-children elem)))
+		       for year = (dom-by-class elem "\\`year")
+		       when (and href year 
+				 (string-match "/title/\\([^/]+\\)" href))
+		       collect
+		       ;; If we have the data on the film, use it.
+		       (let ((film (car (imdb-select
+					 'movie :mid (match-string 1 href)))))
+			 (if film
+			     (progn
+			       (setf (getf film :category)
+				     (car (split-string (dom-attr elem 'id) "-")))
+			       film)
+			   (list :mid (match-string 1 href)
+				 :primary-title (imdb-clean (dom-texts link))
+				 :type "movie"
+				 :start-year
+				 (string-to-number
+				  (car (split-string
+					(imdb-clean (dom-texts year)) "/")))
+				 :category
+				 (car (split-string (dom-attr elem 'id) "-"))
+				 :character (and (stringp character)
+						 (imdb-clean character))))))))
+	   (setq films (cl-sort (nreverse films) '<
+				:key (lambda (elem)
+				       (or (getf elem :year) 1.0e+INF))))
+	   (with-current-buffer buffer
+	     (setq films (imdb-mode-filter films))
+	     (setq imdb-mode-extra-data films)
+	     (let ((inhibit-read-only t))
+	       (save-excursion
+		 (dolist (film films)
+		   (goto-char (point-min))
+		   (forward-line 4)
+		   (unless (text-property-search-forward 'id (getf film :mid) t)
+		     (if (not (getf film :start-year))
+			 (goto-char (point-max))
+		       (while (and (looking-at "[0-9]+")
+				   (let ((year (string-to-number
+						(match-string 0))))
+				     (<= year (getf film :start-year))))
+			 (forward-line 1)))
+		     (imdb-mode-person-film film pid))))))))
+       (kill-buffer (current-buffer))))))
 
 (defun imdb-display-type (type)
   (pcase type
@@ -1202,20 +1200,21 @@ This will take some hours and use 10GB of disk space."
     ("special_effects" "effects")
     ("camera_department" "camera dept")
     ("sound_department" "sound")
+    ("art_director" "art director")
     ("actress" "actor")
     (_ type)))
 
 (defvar imdb-buffers nil)
 
-(defun imdb-url-retrieve (url callback &optional cbargs)
+(defun imdb-url-retrieve (url callback)
   (let ((cache (url-cache-create-filename url)))
     (if (file-exists-p cache)
 	(with-current-buffer (generate-new-buffer " *imdb url cache*")
 	  (erase-buffer)
 	  (set-buffer-multibyte nil)
 	  (insert-file-contents-literally cache)
-	  (apply callback t cbargs))
-      (let ((buffer (url-retrieve url callback cbargs t t)))
+	  (funcall callback t))
+      (let ((buffer (url-retrieve url callback nil t t)))
 	(push buffer imdb-buffers)))))
 
 (defun imdb-kill ()

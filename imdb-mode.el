@@ -471,26 +471,32 @@ This will take some hours and use 10GB of disk space."
 			       ",")))
     (let ((inhibit-read-only t))
       (imdb-mode)
-      (imdb-mode-display-intersection-1 pids))))
+      (imdb-mode-display-intersection-1
+       pids
+       (loop for pid in pids
+	     collect (imdb-person-query-films pid))))))
 
-(defun imdb-mode-display-intersection-1 (pids)
-  (let* ((inhibit-read-only t)
-	 (all (loop for pid in pids
-		    collect (imdb-select-where
-			     "select movie.mid, primary_title, start_year, type, principal.category from movie inner join principal on movie.mid = principal.mid where pid = ?"
-			     pid)))
-	 (films
-	  (loop for film in (car all)
-		when (every
-		      #'identity
-		      (loop for other in (cdr all)
-			    collect
-			    (cl-member
-				  film other
-				  :test (lambda (e1 e2)
-					  (equal (getf e1 :mid)
-						 (getf e2 :mid))))))
-		collect film)))
+(defun imdb-mode-display-intersection-1 (pids all)
+  (let ((inhibit-read-only t)
+	;; Find the intersection (i.e., films that all the people
+	;; concerned have appeared in).
+	(films
+	 (loop for film in (car all)
+	       when (every
+		     #'identity
+		     (loop for other in (cdr all)
+			   collect
+			   (cl-member
+			    film other
+			    :test (lambda (e1 e2)
+				    (equal (getf e1 :mid)
+					   (getf e2 :mid))))))
+	       collect film)))
+    ;; Remove duplicates.
+    (setq films
+	  (cl-remove-duplicates films
+				:key (lambda (e) (getf e :mid))
+				:test #'equal))
     (erase-buffer)
     (imdb-kill)
     (dolist (pid pids)
@@ -514,7 +520,7 @@ This will take some hours and use 10GB of disk space."
       (insert " "))
     (insert "\n\n")
     (setq imdb-mode-mode 'intersection
-	  imdb-mode-search pids)
+	  imdb-mode-search (list pids all))
     (setq films (cl-sort
 		 (reverse films) '<
 		 :key (lambda (e)
@@ -572,7 +578,8 @@ This will take some hours and use 10GB of disk space."
    ((eq imdb-mode-mode 'film-search)
     (imdb-mode-search-film-1 imdb-mode-search))
    ((eq imdb-mode-mode 'intersection)
-    (imdb-mode-display-intersection-1 imdb-mode-search))
+    (imdb-mode-display-intersection-1 (car imdb-mode-search)
+				      (cadr imdb-mode-search)))
    ((eq imdb-mode-mode 'person)
     (imdb-mode-display-person imdb-mode-search)))
   (if (not ids)

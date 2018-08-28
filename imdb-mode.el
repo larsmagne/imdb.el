@@ -410,6 +410,7 @@ This will take some hours and use 10GB of disk space."
     (define-key map "a" 'imdb-mode-show-acting)
     (define-key map "d" 'imdb-mode-show-directing)
     (define-key map "&" 'imdb-mode-open-imdb)
+    (define-key map "w" 'imdb-mode-copy-url)
     (define-key map "q" 'kill-current-buffer)
     (define-key map " " 'imdb-mode-mark-line)
     (define-key map "\r" 'imdb-mode-select)
@@ -752,6 +753,14 @@ This will take some hours and use 10GB of disk space."
   "Open the item under point in a web browser."
   (interactive)
   (browse-url-default-browser (imdb-mode-get-url)))
+
+(defun imdb-mode-copy-url ()
+  "Copy the item URL under point to the kill ring."
+  (interactive)
+  (let ((url (imdb-mode-get-url)))
+    (with-temp-buffer
+      (insert url)
+      (copy-region-as-kill (point-min) 9point-max))))
 
 (defun imdb-mode-get-url ()
   "Find the logical url for the current buffer/point."

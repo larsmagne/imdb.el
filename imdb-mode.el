@@ -862,7 +862,7 @@ This will take some hours and use 10GB of disk space."
     (insert "\n\n")
     (imdb-update-film-image id)
     (let ((directors
-	   (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
+	   (imdb-select-where "select primary_name, person.pid from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
 			      id)))
       (insert
        (if (not directors)
@@ -870,8 +870,9 @@ This will take some hours and use 10GB of disk space."
 	 (concat
 	  (imdb-face "Directed by ")
 	  (imdb-face (mapconcat (lambda (e)
-				   (getf e :primary-name))
-				 directors ", ")
+				  (propertize (getf e :primary-name)
+					      'id (getf e :pid)))
+				directors ", ")
 		     '(:foreground "#f0f0f0"
 				   :weight bold))))
        "\n"))

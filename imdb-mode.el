@@ -1043,9 +1043,10 @@ This will take some hours and use 10GB of disk space."
   (let ((buffer (current-buffer)))
     (imdb-url-retrieve
      (imdb-mode-film-url id)
-     (lambda (_)
+     (lambda (status)
        (goto-char (point-min))
-       (if (not (search-forward "\n\n" nil t))
+       (if (or (not (search-forward "\n\n" nil t))
+	       (getf status :error))
 	   (imdb-placehold-film buffer)
 	 (url-store-in-cache)
 	 (imdb-update-film-image-1
@@ -1085,9 +1086,10 @@ This will take some hours and use 10GB of disk space."
 	(imdb-placehold-film buffer)
       (imdb-url-retrieve
        src
-       (lambda (_)
+       (lambda (status)
 	 (goto-char (point-min))
-	 (when (search-forward "\n\n" nil t)
+	 (when (and (search-forward "\n\n" nil t)
+		    (not (getf status :error)))
 	   (url-store-in-cache)
 	   (let ((data (buffer-substring (point) (point-max))))
 	     (when (buffer-live-p buffer)
@@ -1119,9 +1121,10 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-get-actors (mid buffer)
   (imdb-url-retrieve
    (format "https://www.imdb.com/title/%s/fullcredits?ref_=tt_cl_sm" mid)
-   (lambda (_)
+   (lambda (status)
      (goto-char (point-min))
-     (when (search-forward "\n\n" nil t)
+     (when (and (search-forward "\n\n" nil t)
+		(not (getf status :error)))
        (url-store-in-cache)
        (let* ((table (dom-by-class
 		      (libxml-parse-html-region (point) (point-max))
@@ -1174,9 +1177,10 @@ This will take some hours and use 10GB of disk space."
   (let ((pid (pop pids)))
     (imdb-url-retrieve
      (imdb-mode-person-url pid)
-     (lambda (_)
+     (lambda (status)
        (goto-char (point-min))
-       (when (search-forward "\n\n" nil t)
+       (when (and (search-forward "\n\n" nil t)
+		  (not (getf status :error)))
 	 (url-store-in-cache)
 	 (let* ((dom (libxml-parse-html-region (point) (point-max)))
 		(img (dom-attr (dom-by-tag (dom-by-id dom "img_primary")
@@ -1185,8 +1189,8 @@ This will take some hours and use 10GB of disk space."
 	   (if img
 	       (imdb-url-retrieve
 		img 
-		(lambda (_)
-		  (imdb-load-people-image pid buffer height newlines)))
+		(lambda (status)
+		  (imdb-load-people-image status pid buffer height newlines)))
 	     (when (buffer-live-p buffer)
 	       (with-current-buffer buffer
 		 (let ((inhibit-read-only t)
@@ -1206,9 +1210,10 @@ This will take some hours and use 10GB of disk space."
 	     (imdb-load-people-images pids buffer width height newlines))))
        (kill-buffer (current-buffer))))))
 
-(defun imdb-load-people-image (pid buffer height newlines)
+(defun imdb-load-people-image (status pid buffer height newlines)
   (goto-char (point-min))
-  (when (search-forward "\n\n" nil t)
+  (when (and (search-forward "\n\n" nil t)
+	     (not (getf status :error)))
     (url-store-in-cache)
     (let ((data (buffer-substring (point) (point-max)))
 	  match)
@@ -1331,7 +1336,7 @@ This will take some hours and use 10GB of disk space."
 	  (erase-buffer)
 	  (set-buffer-multibyte nil)
 	  (insert-file-contents-literally cache)
-	  (funcall callback t))
+	  (funcall callback nil))
       (let ((buffer (url-retrieve url callback nil t t)))
 	(push buffer imdb-buffers)))))
 

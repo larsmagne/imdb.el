@@ -321,7 +321,6 @@ This will take some hours and use 10GB of disk space."
 			      value))))))
 
 (defun imdb-exec (statement values)
-  ;;(message "%s %S" statement values)
   (sqlite3-execute-batch imdb-db statement values))
 
 (defun imdb-column-name (column)

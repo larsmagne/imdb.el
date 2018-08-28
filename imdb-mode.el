@@ -677,14 +677,28 @@ This will take some hours and use 10GB of disk space."
 				    (getf e :primary-anem))))
       (insert
        (propertize
-	(format "%s%s\n"
-		(propertize (getf person :primary-name)
-			    'face 'variable-pitch)
-		(if (not (getf person :birth-year))
-		    ""
-		  (propertize (format " (%s)" (getf person :birth-year))
-			      'face '(variable-pitch
-				      (:foreground "#a0a0a0")))))
+	(format
+	 "%s%s%s\n"
+	 (propertize (getf person :primary-name)
+		     'face 'variable-pitch)
+	 (if (not (getf person :birth-year))
+	     ""
+	   (propertize (format " (%s)" (getf person :birth-year))
+		       'face '(variable-pitch
+			       (:foreground "#a0a0a0"))))
+	 (let ((known (imdb-select 'person-known-for :pid (getf person :pid))))
+	   (if (not known)
+	       ""
+	     (propertize
+	      (format " (%s)"
+		      (mapconcat
+		       (lambda (e)
+			 (getf (car (imdb-select 'movie :mid (getf e :mid)))
+			       :primary-title))
+		       known
+		       ", "))
+	      'face '(variable-pitch
+		      (:foreground "#a0a0a0"))))))
 	'id (getf person :pid))))
     (goto-char (point-min))))
 
@@ -1235,6 +1249,7 @@ This will take some hours and use 10GB of disk space."
     ("sound_department" "sound")
     ("art_director" "art director")
     ("actress" "actor")
+    ("production_designer" "production designer")
     (_ type)))
 
 (defvar imdb-buffers nil)

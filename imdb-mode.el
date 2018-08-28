@@ -360,6 +360,7 @@ This will take some hours and use 10GB of disk space."
 
 
 (defun imdb-select-where (statement &rest values)
+  (imdb-initialize)
   (let ((result nil))
     (sqlite3-execute
      imdb-db
@@ -376,6 +377,7 @@ This will take some hours and use 10GB of disk space."
     (nreverse result)))
 
 (defun imdb-find (table &rest values)
+  (imdb-initialize)
   (let ((result nil))
     (sqlite3-execute
      imdb-db
@@ -652,8 +654,8 @@ This will take some hours and use 10GB of disk space."
 		(imdb-face (getf film :primary-title))
 		(if (equal (getf film :type) "movie")
 		    ""
-		  (imdb-face (format " (%s)" (imdb-display-type
-					      (getf film :type)))
+		  (imdb-face (format " (%s)"
+				     (imdb-display-type (getf film :type)))
 			     "#80a080"))
 		(let ((directors
 		       (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"

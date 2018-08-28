@@ -963,7 +963,8 @@ This will take some hours and use 10GB of disk space."
 	(insert
 	 (imdb-face (format " (%s%s)" (getf person :birth-year)
 			    (if (getf person :death-year)
-				(format "-%s" (getf person :death-year))))
+				(format "-%s" (getf person :death-year))
+			      ""))
 		    "#a0a0a0"))))
     (when-let ((known (imdb-select 'person-known-for :pid id)))
       (insert "\n")
@@ -1017,13 +1018,15 @@ This will take some hours and use 10GB of disk space."
 			 "select count(*) from movie inner join episode on movie.mid = episode.mid inner join principal_character on principal_character.mid = movie.mid where episode.movie = ? and principal_character.pid = ?"
 			 (getf film :mid)
 			 pid))))
-		  (if (plusp (getf count :count))
-		      (format " (tv series, %s episode%s)"
-			      (getf count :count)
-			      (if (> (getf count :count) 1)
-				  "s"
-				""))
-		    (format " (tv series)"))))
+		  (imdb-face
+		   (if (plusp (getf count :count))
+		       (format " (tv series, %s episode%s)"
+			       (getf count :count)
+			       (if (> (getf count :count) 1)
+				   "s"
+				 ""))
+		     (format " (tv series)"))
+		   "#a0a0a0")))
 	       (t
 		(imdb-face (format " (%s)" (imdb-display-type
 					    (getf film :type)))

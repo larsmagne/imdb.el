@@ -52,7 +52,7 @@
 (defvar imdb-mode-extra-data nil)
 (defvar imdb-mode-filter-insignificant nil)
 (defvar imdb-mode-filter-job nil)
-(defvar imdb-mode-mode 'film-search)
+(defvar imdb-mode-mode nil)
 (defvar imdb-mode-search nil)
 
 (defvar imdb-tables
@@ -1134,62 +1134,68 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-person-update-films (pid)
   (let ((buffer (current-buffer)))
-    (imdb-url-retrieve
-     (format "https://www.imdb.com/name/%s/" pid)
-     (lambda (_)
-       (goto-char (point-min))
-       (when (search-forward "\n\n" nil t)
-	 (url-store-in-cache)
-	 (let* ((dom (libxml-parse-html-region (point) (point-max)))
-		(films
-		 (loop for elem in (dom-by-class dom "\\`filmo-row")
-		       for link = (dom-by-tag elem 'a)
-		       for href = (dom-attr link 'href)
-		       for character = (car (last (dom-children elem)))
-		       for year = (dom-by-class elem "\\`year")
-		       when (and href year 
-				 (string-match "/title/\\([^/]+\\)" href))
-		       collect
-		       ;; If we have the data on the film, use it.
-		       (let ((film (car (imdb-select
-					 'movie :mid (match-string 1 href)))))
-			 (if film
-			     (progn
-			       (setf (getf film :category)
-				     (car (split-string (dom-attr elem 'id) "-")))
-			       film)
-			   (list :mid (match-string 1 href)
-				 :primary-title (imdb-clean (dom-texts link))
-				 :type "movie"
-				 :start-year
-				 (string-to-number
-				  (car (split-string
-					(imdb-clean (dom-texts year)) "/")))
-				 :category
-				 (car (split-string (dom-attr elem 'id) "-"))
-				 :character (and (stringp character)
-						 (imdb-clean character))))))))
-	   (setq films (cl-sort (nreverse films) '<
-				:key (lambda (elem)
-				       (or (getf elem :year) 1.0e+INF))))
-	   (with-current-buffer buffer
-	     (setq films (imdb-mode-filter films))
-	     (setq imdb-mode-extra-data films)
-	     (let ((inhibit-read-only t))
-	       (save-excursion
-		 (dolist (film films)
-		   (goto-char (point-min))
-		   (forward-line 4)
-		   (unless (text-property-search-forward 'id (getf film :mid) t)
-		     (if (not (getf film :start-year))
-			 (goto-char (point-max))
-		       (while (and (looking-at "[0-9]+")
-				   (let ((year (string-to-number
-						(match-string 0))))
-				     (<= year (getf film :start-year))))
-			 (forward-line 1)))
-		     (imdb-mode-person-film film pid))))))))
-       (kill-buffer (current-buffer))))))
+    (imdb-person-get-films
+     pid
+     (lambda (films)
+       (with-current-buffer buffer
+	 (setq films (imdb-mode-filter films))
+	 (setq imdb-mode-extra-data films)
+	 (let ((inhibit-read-only t))
+	   (save-excursion
+	     (dolist (film films)
+	       (goto-char (point-min))
+	       (forward-line 4)
+	       (unless (text-property-search-forward 'id (getf film :mid) t)
+		 (if (not (getf film :start-year))
+		     (goto-char (point-max))
+		   (while (and (looking-at "[0-9]+")
+			       (let ((year (string-to-number
+					    (match-string 0))))
+				 (<= year (getf film :start-year))))
+		     (forward-line 1)))
+		 (imdb-mode-person-film film pid))))))))))
+
+(defun imdb-person-get-films (pid callback)
+  (imdb-url-retrieve
+   (format "https://www.imdb.com/name/%s/" pid)
+   (lambda (_)
+     (goto-char (point-min))
+     (when (search-forward "\n\n" nil t)
+       (url-store-in-cache)
+       (let* ((dom (libxml-parse-html-region (point) (point-max)))
+	      (films
+	       (loop for elem in (dom-by-class dom "\\`filmo-row")
+		     for link = (dom-by-tag elem 'a)
+		     for href = (dom-attr link 'href)
+		     for character = (car (last (dom-children elem)))
+		     for year = (dom-by-class elem "\\`year")
+		     when (and href year 
+			       (string-match "/title/\\([^/]+\\)" href))
+		     collect
+		     ;; If we have the data on the film, use it.
+		     (let ((film (car (imdb-select
+				       'movie :mid (match-string 1 href)))))
+		       (if film
+			   (progn
+			     (setf (getf film :category)
+				   (car (split-string (dom-attr elem 'id) "-")))
+			     film)
+			 (list :mid (match-string 1 href)
+			       :primary-title (imdb-clean (dom-texts link))
+			       :type "movie"
+			       :start-year
+			       (string-to-number
+				(car (split-string
+				      (imdb-clean (dom-texts year)) "/")))
+			       :category
+			       (car (split-string (dom-attr elem 'id) "-"))
+			       :character (and (stringp character)
+					       (imdb-clean character))))))))
+	 (setq films (cl-sort (nreverse films) '<
+			      :key (lambda (elem)
+				     (or (getf elem :year) 1.0e+INF))))
+	 (funcall callback films)))
+     (kill-buffer (current-buffer)))))
 
 (defun imdb-display-type (type)
   (pcase type

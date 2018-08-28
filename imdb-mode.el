@@ -760,7 +760,7 @@ This will take some hours and use 10GB of disk space."
   (let ((url (imdb-mode-get-url)))
     (with-temp-buffer
       (insert url)
-      (copy-region-as-kill (point-min) 9point-max))))
+      (copy-region-as-kill (point-min) (point-max)))))
 
 (defun imdb-mode-get-url ()
   "Find the logical url for the current buffer/point."

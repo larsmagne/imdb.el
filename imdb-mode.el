@@ -677,9 +677,10 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-query-user (prompt)
   (let ((default (thing-at-point 'word)))
-    (when (and default
-	       imdb-mode-regexp-p)
-      (setq default (regexp-quote default)))
+    (when default
+      (setq default (substring-no-properties default))
+      (when imdb-mode-regexp-p
+	(setq default (regexp-quote default))))
     (read-string
      (format "%s (%s%s): "
 	     prompt

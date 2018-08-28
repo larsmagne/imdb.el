@@ -1247,10 +1247,8 @@ This will take some hours and use 10GB of disk space."
     ("special_effects" "effects")
     ("camera_department" "camera dept")
     ("sound_department" "sound")
-    ("art_director" "art director")
     ("actress" "actor")
-    ("production_designer" "production designer")
-    (_ type)))
+    (_ (replace-regexp-in-string "_" " " type))))
 
 (defvar imdb-buffers nil)
 

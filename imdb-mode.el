@@ -43,6 +43,9 @@
 
 ;;; Code:
 
+(eval-when-compile
+  (setq byte-compile-warnings '(not cl-functions)))
+
 (require 'imdb)
 (require 'sqlite3)
 (require 'cl)

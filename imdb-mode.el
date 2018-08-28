@@ -801,7 +801,9 @@ This will take some hours and use 10GB of disk space."
 			     (:foreground "#b0b0b0")))))
       (when (getf film :length)
 	(when rating
-	  (insert (propertize " / " 'face 'variable-pitch)))
+	  (insert (propertize " / "
+			      'face '(variable-pitch
+				      (:foreground "#b0b0b0")))))
 	(insert 
 	 (propertize (format "%d mins" (getf film :length))
 		     'face '(variable-pitch

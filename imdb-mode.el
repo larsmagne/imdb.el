@@ -681,16 +681,17 @@ This will take some hours and use 10GB of disk space."
       (setq default (substring-no-properties default))
       (when imdb-mode-regexp-p
 	(setq default (regexp-quote default))))
-    (read-string
-     (format "%s (%s%s): "
-	     prompt
-	     (if imdb-mode-regexp-p
-		 "regexp"
-	       "substring")
-	     (if default
-		 (format ", default %s" default)
-	       ""))
-     nil nil default)))
+    (downcase
+     (read-string
+      (format "%s (%s%s): "
+	      prompt
+	      (if imdb-mode-regexp-p
+		  "regexp"
+		"substring")
+	      (if default
+		  (format ", default %s" default)
+		""))
+      nil nil default))))
 
 (defun imdb-person (person)
   "List films matching PERSON."
@@ -797,26 +798,27 @@ This will take some hours and use 10GB of disk space."
   (let ((url (imdb-mode-get-url)))
     (with-temp-buffer
       (insert url)
-      (copy-region-as-kill (point-min) (point-max)))))
+      (copy-region-as-kill (point-min) (point-max))
+      (message "Copied %S" (buffer-string)))))
 
 (defun imdb-mode-get-url ()
   "Find the logical url for the current buffer/point."
   (let ((id (get-text-property (point) 'id)))
-    (unless id
+    (if (not id)
+	(cond
+	 ((eq imdb-mode-mode 'person)
+	  (imdb-mode-person-url imdb-mode-search))
+	 ((eq imdb-mode-mode 'film)
+	  (imdb-mode-film-url imdb-mode-search))
+	 (t
+	  (error "Nothing under point")))
       (cond
-       ((eq imdb-mode-mode 'person)
-	(imdb-mode-person-url imdb-mode-search))
-       ((eq imdb-mode-mode 'film)
-	(imdb-mode-film-url imdb-mode-search))
-       (t
-	(error "Nothing under point"))))
-    (cond
-     ((or (eq imdb-mode-mode 'film-search)
-	  (eq imdb-mode-mode 'person))
-      (imdb-mode-film-url id))
-     ((or (eq imdb-mode-mode 'people-search)
-	  (eq imdb-mode-mode 'film))
-      (imdb-mode-person-url id)))))
+       ((or (eq imdb-mode-mode 'film-search)
+	    (eq imdb-mode-mode 'person))
+	(imdb-mode-film-url id))
+       ((or (eq imdb-mode-mode 'people-search)
+	    (eq imdb-mode-mode 'film))
+	(imdb-mode-person-url id))))))
 
 (defun imdb-mode-person-url (id)
   (format "https://www.imdb.com/name/%s/" id))

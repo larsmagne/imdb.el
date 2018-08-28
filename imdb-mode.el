@@ -412,8 +412,8 @@ This will take some hours and use 10GB of disk space."
 (defvar imdb-mode-map
   (let ((map (make-keymap)))
     (set-keymap-parent map special-mode-map)
-    (define-key map "f" 'imdb-mode-search-film)
-    (define-key map "p" 'imdb-mode-search-person)
+    (define-key map "f" 'imdb-film)
+    (define-key map "p" 'imdb-person)
     (define-key map "x" 'imdb-mode-toggle-insignificant)
     (define-key map "a" 'imdb-mode-show-acting)
     (define-key map "d" 'imdb-mode-show-directing)
@@ -446,7 +446,7 @@ This will take some hours and use 10GB of disk space."
   (let ((inhibit-read-only t))
     (erase-buffer)
     (imdb-mode)
-    (imdb-mode-search-film film)))
+    (imdb-film film)))
 
 (defun imdb-mode-mark-line ()
   "Toggle marking of the current line."
@@ -620,9 +620,9 @@ This will take some hours and use 10GB of disk space."
       (goto-char start)
       nil)))
 
-(defun imdb-mode-search-film (film)
+(defun imdb-film (film)
   "List films matching FILM."
-  (interactive "sFilm: ")
+  (interactive (list (imdb-query-user "Film")))
   (switch-to-buffer (format "*imdb %s*" film))
   (let ((inhibit-read-only t))
     (imdb-mode)
@@ -673,9 +673,25 @@ This will take some hours and use 10GB of disk space."
 	'id (getf film :mid))))
     (goto-char (point-min))))
 
-(defun imdb-mode-search-person (person)
+(defun imdb-query-user (prompt)
+  (let ((default (thing-at-point 'word)))
+    (when (and default
+	       imdb-mode-regexp-p)
+      (setq default (regexp-quote default)))
+    (read-string
+     (format "%s (%s%s): "
+	     prompt
+	     (if imdb-mode-regexp-p
+		 "regexp"
+	       "substring")
+	     (if default
+		 (format ", default %s" default)
+	       ""))
+     nil nil default)))
+
+(defun imdb-person (person)
   "List films matching PERSON."
-  (interactive "sPerson: ")
+  (interactive (list (imdb-query-user "Person")))
   (imdb-initialize)
   (switch-to-buffer (format "*imdb %s*" person))
   (let ((inhibit-read-only t))

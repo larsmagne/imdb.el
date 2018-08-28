@@ -417,6 +417,7 @@ This will take some hours and use 10GB of disk space."
     (define-key map "f" 'imdb-film)
     (define-key map "p" 'imdb-person)
     (define-key map "x" 'imdb-mode-toggle-insignificant)
+    (define-key map "l" 'imdb-mode-load-all-images)
     (define-key map "a" 'imdb-mode-show-acting)
     (define-key map "d" 'imdb-mode-show-directing)
     (define-key map "&" 'imdb-mode-open-imdb)
@@ -792,6 +793,22 @@ This will take some hours and use 10GB of disk space."
   (interactive)
   (browse-url-default-browser (imdb-mode-get-url)))
 
+(defun imdb-mode-load-all-images ()
+  "Expand all the actor images in the current buffer."
+  (interactive)
+  (unless (eq imdb-mode-mode 'film)
+    (error "This command only works when displaying films"))
+  (let ((pids nil)
+	match)
+  (save-excursion
+    (goto-char (point-min))
+    (while (setq match (text-property-search-forward 'placeholder t t))
+      (push (get-text-property (prop-match-beginning match) 'id) pids)))
+  (if (not pids)
+      (message "Nothing to expand")
+    (message "Expanding...")
+    (imdb-load-people-images (nreverse pids) (current-buffer) 100 150 3))))
+
 (defun imdb-mode-copy-url ()
   "Copy the item URL under point to the kill ring."
   (interactive)
@@ -1029,7 +1046,7 @@ This will take some hours and use 10GB of disk space."
 	(save-excursion
 	  (goto-char (point-min))
 	  (delete-region (point) (1+ (point)))
-	  (imdb-insert-placeholder 300 400 t))))))
+	  (imdb-insert-placeholder 300 400 "black"))))))
 
 (defun imdb-update-film-image-1 (url buffer)
   (if (not url)
@@ -1063,11 +1080,13 @@ This will take some hours and use 10GB of disk space."
 		      (create-image data 'imagemagick t :height 400))))))))
 	 (kill-buffer (current-buffer)))))))
 
-(defun imdb-insert-placeholder (width height &optional no-gradient)
+(defun imdb-insert-placeholder (width height &optional color)
   (let* ((scale (image-compute-scaling-factor image-scaling-factor))
 	 (svg (svg-create (* width scale) (* height scale))))
     (svg-gradient svg "background" 'linear '((0 . "#b0b0b0") (100 . "#808080")))
-    (unless no-gradient
+    (if color
+	(svg-rectangle svg 0 0 (* width scale) (* height scale)
+		       :fill-color color)
       (svg-rectangle svg 0 0 (* width scale) (* height scale)
 		     :gradient "background"
                      :stroke-width 2
@@ -1110,7 +1129,9 @@ This will take some hours and use 10GB of disk space."
 	       (dolist (person people)
 		 (let ((start (point)))
 		   (if (> (length updates) 10)
-		       (imdb-insert-placeholder 100 150 t)
+		       (let ((start (point)))
+			 (imdb-insert-placeholder 100 150 "#004000")
+			 (put-text-property start (point) 'placeholder t))
 		     (push person updates)
 		     (imdb-insert-placeholder 100 150))
 		   (insert
@@ -1159,7 +1180,7 @@ This will take some hours and use 10GB of disk space."
 		       (let ((id (get-text-property (point) 'id))
 			     (start (point)))
 			 (delete-region (point) (1+ (point)))
-			 (imdb-insert-placeholder width height t)
+			 (imdb-insert-placeholder width height "black")
 			 (put-text-property start (point) 'id id))))))))
 	   (when pids
 	     (imdb-load-people-images pids buffer width height newlines))))

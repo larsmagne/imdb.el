@@ -660,7 +660,7 @@ This will take some hours and use 10GB of disk space."
        (propertize
 	(format "%s %s%s%s%s\n"
 		(imdb-face (getf film :start-year))
-		(propertize " " 'display '(space :align-to 8))
+		(propertize " " 'display '(space :align-to 6))
 		(imdb-face (getf film :primary-title))
 		(if (equal (getf film :type) "movie")
 		    ""
@@ -988,7 +988,7 @@ This will take some hours and use 10GB of disk space."
      (propertize
       (format "%s %s%s%s%s%s%s\n"
 	      (imdb-face (or (getf film :start-year) ""))
-	      (propertize " " 'display '(space :align-to 8))
+	      (propertize " " 'display '(space :align-to 6))
 	      (imdb-face (getf film :primary-title))
 	      (cond
 	       ((equal (getf film :type) "movie")

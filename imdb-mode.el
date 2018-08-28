@@ -483,6 +483,19 @@ This will take some hours and use 10GB of disk space."
        (loop for pid in pids
 	     collect (imdb-person-query-films pid))))))
 
+(defun imdb-face (string &optional props)
+  (setq string (if (stringp string)
+		   string
+		 (format "%s" string)))
+  (propertize string
+	      'face (cond
+		     ((null props)
+		      'variable-pitch)
+		     ((stringp props)
+		      `(variable-pitch (:foreground ,props)))
+		     (t
+		      `(variable-pitch ,props)))))		
+
 (defun imdb-mode-display-intersection-1 (pids all)
   (let ((inhibit-read-only t)
 	;; Find the intersection (i.e., films that all the people
@@ -516,14 +529,10 @@ This will take some hours and use 10GB of disk space."
     (dolist (pid pids)
       (let ((person (car (imdb-select 'person :pid pid))))
 	(insert
-	 (propertize
-	  (getf person :primary-name)
-	  'face '(variable-pitch (:foreground "#f0f0f0"))))
+	 (imdb-face (getf person :primary-name) "#f0f0f0"))
 	(when (getf person :birth-year)
 	  (insert
-	   (propertize
-	    (format " (%s)" (getf person :birth-year))
-	    'face '(variable-pitch (:foreground "#a0a0a0"))))))
+	   (imdb-face (format " (%s)" (getf person :birth-year)) "#a0a0a0"))))
       (insert " "))
     (insert "\n\n")
     (setq imdb-mode-mode 'intersection
@@ -638,27 +647,24 @@ This will take some hours and use 10GB of disk space."
       (insert
        (propertize
 	(format "%s %s%s%s%s\n"
-		(propertize (format "%s" (getf film :start-year))
-			    'face 'variable-pitch)
+		(imdb-face (getf film :start-year))
 		(propertize " " 'display '(space :align-to 8))
-		(propertize (getf film :primary-title) 'face 'variable-pitch)
+		(imdb-face (getf film :primary-title))
 		(if (equal (getf film :type) "movie")
 		    ""
-		  (propertize (format " (%s)" (imdb-display-type
-					       (getf film :type)))
-			      'face '(variable-pitch
-				      (:foreground "#80a080"))))
+		  (imdb-face (format " (%s)" (imdb-display-type
+					      (getf film :type)))
+			     "#80a080"))
 		(let ((directors
 		       (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
 					  (getf film :mid))))
 		  (if (not directors)
 		      ""
-		    (propertize
+		    (imdb-face
 		     (concat " " (mapconcat (lambda (e)
 					      (getf e :primary-name))
 					    directors ", "))
-		     'face '(variable-pitch
-			     (:foreground "#80a080"))))))
+		     "#80a080"))))
 	'id (getf film :mid))))
     (goto-char (point-min))))
 
@@ -694,17 +700,14 @@ This will take some hours and use 10GB of disk space."
        (propertize
 	(format
 	 "%s%s%s\n"
-	 (propertize (getf person :primary-name)
-		     'face 'variable-pitch)
+	 (imdb-face (getf person :primary-name))
 	 (if (not (getf person :birth-year))
 	     ""
-	   (propertize (format " (%s)" (getf person :birth-year))
-		       'face '(variable-pitch
-			       (:foreground "#a0a0a0"))))
+	   (imdb-face (format " (%s)" (getf person :birth-year)) "#a0a0a0"))
 	 (let ((known (imdb-select 'person-known-for :pid (getf person :pid))))
 	   (if (not known)
 	       ""
-	     (propertize
+	     (imdb-face
 	      (format " (%s)"
 		      (mapconcat
 		       (lambda (e)
@@ -712,8 +715,7 @@ This will take some hours and use 10GB of disk space."
 			       :primary-title))
 		       known
 		       ", "))
-	      'face '(variable-pitch
-		      (:foreground "#a0a0a0"))))))
+	      "#a0a0a0"))))
 	'id (getf person :pid))))
     (goto-char (point-min))))
 
@@ -819,48 +821,40 @@ This will take some hours and use 10GB of disk space."
        (if (not directors)
 	   ""
 	 (concat
-	  (propertize "Directed by " 'face 'variable-pitch)
-	  (propertize (mapconcat (lambda (e)
+	  (imdb-face "Directed by ")
+	  (imdb-face (mapconcat (lambda (e)
 				   (getf e :primary-name))
 				 directors ", ")
-		      'face '(variable-pitch
-			      (:foreground "#f0f0f0"
-					   :weight bold)))))
+		     '(:foreground "#f0f0f0"
+				   :weight bold))))
        "\n"))
 
     (let ((rating (car (imdb-select 'rating :mid id))))
       (when rating
 	(insert
-	 (propertize (format "Rating %s / %s votes"
+	 (imdb-face (format "Rating %s / %s votes"
 			     (getf rating :rating)
 			     (getf rating :votes))
-		     'face '(variable-pitch
-			     (:foreground "#b0b0b0")))))
+		    "#b0b0b0")))
       (when (getf film :length)
 	(when rating
-	  (insert (propertize " / "
-			      'face '(variable-pitch
-				      (:foreground "#b0b0b0")))))
+	  (insert (imdb-face " / " "#b0b0b0")))
 	(insert 
-	 (propertize (format "%d mins" (getf film :length))
-		     'face '(variable-pitch
-			     (:foreground "#b0b0b0"))))))
+	 (imdb-face (format "%d mins" (getf film :length)) "#b0b0b0"))))
     (insert "\n")
 
     (let ((genres (imdb-select 'movie-genre :mid id)))
       (when genres
 	(insert 
-	 (propertize
+	 (imdb-face
 	  (mapconcat (lambda (e) (getf e :genre)) genres ", ")
-	  'face '(variable-pitch
-		  (:foreground "#b0b0b0")))))
+	  "#b0b0b0")))
       (when (getf film :type)
 	(when genres
-	  (insert (propertize " " 'face 'variable-pitch)))
+	  (insert (imdb-face " ")))
 	(insert 
-	 (propertize (format "(%s)" (imdb-display-type (getf film :type)))
-		     'face '(variable-pitch
-			     (:foreground "#b0b0b0")))))
+	 (imdb-face (format "(%s)" (imdb-display-type (getf film :type)))
+		    "#b0b0b0")))
       (when (or (getf film :type)
 		genres)
 	(insert "\n")))
@@ -880,26 +874,25 @@ This will take some hours and use 10GB of disk space."
       (insert (propertize
 	       (format
 		"%s%s%s\n"
-		(propertize
+		(imdb-face
 		 (getf (car (imdb-select 'person :pid (getf person :pid)))
-		       :primary-name)
-		 'face 'variable-pitch)
-		(propertize
+		       :primary-name))
+		(imdb-face
 		 (format " (%s)" (imdb-display-type (getf person :category)))
-		 'face '(variable-pitch (:foreground "#c0c0c0")))
+		 "#c0c0c0")
 		(let ((characters (imdb-select 'principal-character
 					       :mid id
 					       :pid (getf person :pid))))
 		  (if (not characters)
 		      ""
-		    (propertize
+		    (imdb-face
 		     (concat
 		      " "
 		      (mapconcat
 		       (lambda (e)
 			 (format "\"%s\"" (getf e :character)))
 		       characters ", "))
-		     'face '(variable-pitch (:foreground "#a0a0f0"))))))
+		     "#a0a0f0"))))
 	       'id (getf person :pid))))
     (goto-char (point-min))
     (forward-line 1)
@@ -917,14 +910,10 @@ This will take some hours and use 10GB of disk space."
     (insert "\n\n")
     (let ((person (car (imdb-select 'person :pid id))))
       (insert
-       (propertize
-	(getf person :primary-name)
-	'face '(variable-pitch (:foreground "#f0f0f0"))))
+       (imdb-face (getf person :primary-name) "#f0f0f0"))
       (when (getf person :birth-year)
 	(insert
-	 (propertize
-	  (format " (%s)" (getf person :birth-year))
-	  'face '(variable-pitch (:foreground "#a0a0a0"))))))
+	 (imdb-face (format " (%s)" (getf person :birth-year)) "#a0a0a0"))))
     (insert "\n\n")
     (imdb-load-people-images (list id) (current-buffer) 300 400 0)
     (setq imdb-mode-mode 'person
@@ -951,46 +940,41 @@ This will take some hours and use 10GB of disk space."
     (insert
      (propertize
       (format "%s %s%s%s%s%s%s\n"
-	      (propertize
-	       (format "%s" (or (getf film :start-year) ""))
-	       'face 'variable-pitch)
+	      (imdb-face (or (getf film :start-year) ""))
 	      (propertize " " 'display '(space :align-to 8))
 	      (propertize (getf film :primary-title)
 			  'face 'variable-pitch)
 	      (if (equal (getf film :type) "movie")
 		  ""
-		(propertize (format " (%s)" (imdb-display-type
-					     (getf film :type)))
-			    'face '(variable-pitch
-				    (:foreground "#a0a0a0"))))
-	      (propertize (format " (%s)" (imdb-display-type
-					   (getf film :category)))
-			  'face '(variable-pitch
-				  (:foreground "#c0c0c0")))
+		(imdb-face (format " (%s)" (imdb-display-type
+					    (getf film :type)))
+			   "#a0a0a0"))
+	      (imdb-face (format " (%s)" (imdb-display-type
+					  (getf film :category)))
+			 "#c0c0c0")
 	      (let ((characters (imdb-select 'principal-character
 					     :mid (getf film :mid)
 					     :pid pid)))
 		(if (not characters)
 		    ""
-		  (propertize
+		  (imdb-face
 		   (concat
 		    " "
 		    (mapconcat
 		     (lambda (e)
 		       (format "%S" (getf e :character)))
 		     characters ", "))
-		   'face '(variable-pitch (:foreground "#a0a0f0")))))
+		   "#a0a0f0")))
 	      (let ((directors
 		     (imdb-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
 					(getf film :mid))))
 		(if (not directors)
 		    ""
-		  (propertize
+		  (imdb-face
 		   (concat " " (mapconcat (lambda (e)
 					    (getf e :primary-name))
 					  directors ", "))
-		   'face '(variable-pitch
-			   (:foreground "#80a080"))))))
+		   "#80a080"))))
       'id (getf film :mid)))))
 
 (defun imdb-update-film-image (id)
@@ -1106,14 +1090,12 @@ This will take some hours and use 10GB of disk space."
 		     (imdb-insert-placeholder 100 150))
 		   (insert
 		    (format " %s%s\n"
-			    (propertize (getf person :name)
-					'face 'variable-pitch)
+			    (imdb-face (getf person :name))
 			    (if (equal (getf person :character) "")
 				""
-			      (propertize (format " \"%s\""
-						  (getf person :character))
-					  'face '(variable-pitch
-						  (:foreground "#a0a0a0"))))))
+			      (imdb-face (format " \"%s\""
+						 (getf person :character))
+					 "#a0a0a0"))))
 		   (put-text-property start (point)
 				      'id (getf person :pid)))))))
 	 (kill-buffer (current-buffer))

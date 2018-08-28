@@ -131,7 +131,8 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-download-data ()
   (let ((dom
-	 (with-current-buffer (url-retrieve-synchronously "https://datasets.imdbws.com/")
+	 (with-current-buffer (url-retrieve-synchronously
+			       "https://datasets.imdbws.com/")
 	   (goto-char (point-min))
 	   (search-forward "\n\n")
 	   (prog1

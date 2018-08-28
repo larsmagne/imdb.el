@@ -130,7 +130,8 @@
 This will take some hours and use 10GB of disk space."
   (imdb-download-data)
   (imdb-create-tables)
-  (imdb-read-data))
+  (imdb-read-data)
+  (imdb-create-indices))
 
 (defun imdb-download-data ()
   (let ((dom
@@ -193,8 +194,9 @@ This will take some hours and use 10GB of disk space."
 					   (format " references %s"
 						   references)
 					 ""))))
-		      ", "))))
+		      ", ")))))
 
+(defun imdb-create-indices ()
   (imdb-create-index
    "pcidx on principal_character(mid, pid)"
    "mgidx on movie_genre(mid)"
@@ -1163,10 +1165,11 @@ This will take some hours and use 10GB of disk space."
     (imdb-person-get-films
      pid
      (lambda (films)
-       (setq did films)))
+       (setq did (or films t))))
     (while (not did)
       (sleep-for 0.1))
-    did))
+    (and (listp did)
+	 did)))
 
 (defun imdb-person-update-films (pid)
   (let ((buffer (current-buffer)))

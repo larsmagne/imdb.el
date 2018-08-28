@@ -48,6 +48,8 @@
 (require 'cl)
 (require 'browse-url)
 
+(defvar imdb-mode-regexp-p nil)
+
 (defvar imdb-db nil)
 
 (defvar imdb-mode-extra-data nil)
@@ -168,7 +170,8 @@ This will take some hours and use 10GB of disk space."
   (unless imdb-db
     (setq imdb-db (sqlite3-new
 		   (file-truename "~/.emacs.d/imdb/imdb.sqlite3")))
-    (sqlite3-load-extension imdb-db "/usr/lib/sqlite3/pcre.so")))
+    (when (sqlite3-load-extension imdb-db "/usr/lib/sqlite3/pcre.so")
+      (setq imdb-mode-regexp-p t))))
 
 (defun imdb-create-tables ()
   (imdb-initialize)
@@ -615,9 +618,13 @@ This will take some hours and use 10GB of disk space."
     (imdb-mode-search-film-1 film)))
 
 (defun imdb-mode-search-film-1 (film)
-  (let ((films (imdb-select-where
-		"select * from movie where lower(primary_title) regexp ?"
-		film))
+  (let ((films (if imdb-mode-regexp-p
+		   (imdb-select-where
+		    "select * from movie where lower(primary_title) regexp ?"
+		    film)
+		 (imdb-select-where
+		    "select * from movie where lower(primary_title) like ?"
+		    (format "%%%s%%" film))))
 	(inhibit-read-only t))
     (erase-buffer)
     (imdb-kill)
@@ -668,9 +675,13 @@ This will take some hours and use 10GB of disk space."
     (imdb-mode-search-person-1 person)))
 
 (defun imdb-mode-search-person-1 (person)
-  (let ((people (imdb-select-where
-		 "select * from person where lower(primary_name) regexp ?"
-		 person))
+  (let ((people (if imdb-mode-regexp-p
+		    (imdb-select-where
+		     "select * from person where lower(primary_name) regexp ?"
+		     person)
+		  (imdb-select-where
+		   "select * from person where lower(primary_name) like ?"
+		   (format "%%%s%%" person))))
 	(inhibit-read-only t))
     (erase-buffer)
     (imdb-kill)

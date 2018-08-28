@@ -46,6 +46,7 @@
 (require 'imdb)
 (require 'sqlite3)
 (require 'cl)
+(require 'browse-url)
 
 (defvar imdb-db nil)
 
@@ -750,32 +751,32 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-mode-open-imdb ()
   "Open the item under point in a web browser."
   (interactive)
+  (browse-url-default-browser (imdb-mode-get-url)))
+
+(defun imdb-mode-get-url ()
+  "Find the logical url for the current buffer/point."
   (let ((id (get-text-property (point) 'id)))
     (unless id
       (cond
        ((eq imdb-mode-mode 'person)
-	(imdb-mode-open-person-in-imdb imdb-mode-search))
+	(imdb-mode-person-url imdb-mode-search))
        ((eq imdb-mode-mode 'film)
-	(imdb-mode-open-film-in-imdb imdb-mode-search))
+	(imdb-mode-film-url imdb-mode-search))
        (t
 	(error "Nothing under point"))))
     (cond
      ((or (eq imdb-mode-mode 'film-search)
 	  (eq imdb-mode-mode 'person))
-      (imdb-mode-open-film-in-imdb id))
+      (imdb-mode-film-url id))
      ((or (eq imdb-mode-mode 'people-search)
 	  (eq imdb-mode-mode 'film))
-      (imdb-mode-open-person-in-imdb id)))))
+      (imdb-mode-person-url id)))))
 
-(require 'browse-url)
+(defun imdb-mode-person-url (id)
+  (format "https://www.imdb.com/name/%s/" id))
 
-(defun imdb-mode-open-person-in-imdb (id)
-  (browse-url-default-browser
-   (format "https://www.imdb.com/name/%s/" id)))
-
-(defun imdb-mode-open-film-in-imdb (id)
-  (browse-url-default-browser
-   (format "https://www.imdb.com/title/%s/" id)))
+(defun imdb-mode-film-url (id)
+  (format "https://www.imdb.com/title/%s/" id))
 
 (defun imdb-mode-display-film (id)
   (switch-to-buffer (format "*imdb %s*"
@@ -975,7 +976,7 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-update-film-image (id)
   (let ((buffer (current-buffer)))
     (imdb-url-retrieve
-     (format "http://www.imdb.com/title/%s/" id)
+     (imdb-mode-film-url id)
      (lambda (_)
        (goto-char (point-min))
        (if (not (search-forward "\n\n" nil t))
@@ -1104,7 +1105,7 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-load-people-images (pids buffer width height newlines)
   (let ((pid (pop pids)))
     (imdb-url-retrieve
-     (format "https://www.imdb.com/name/%s/" pid)
+     (imdb-mode-person-url pid)
      (lambda (_)
        (goto-char (point-min))
        (when (search-forward "\n\n" nil t)
@@ -1196,7 +1197,7 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-person-get-films (pid callback)
   (imdb-url-retrieve
-   (format "https://www.imdb.com/name/%s/" pid)
+   (imdb-mode-person-url pid)
    (lambda (_)
      (goto-char (point-min))
      (let (films)

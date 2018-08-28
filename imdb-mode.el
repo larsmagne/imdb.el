@@ -960,7 +960,23 @@ This will take some hours and use 10GB of disk space."
        (imdb-face (getf person :primary-name) "#f0f0f0"))
       (when (getf person :birth-year)
 	(insert
-	 (imdb-face (format " (%s)" (getf person :birth-year)) "#a0a0a0"))))
+	 (imdb-face (format " (%s%s)" (getf person :birth-year)
+			    (if (getf person :death-year)
+				(format "-%s" (getf person :death-year))))
+		    "#a0a0a0"))))
+    (when-let ((known (imdb-select 'person-known-for :pid id)))
+      (insert "\n")
+      (insert (imdb-face
+	       (format "Known for %s"
+		       (mapconcat
+			(lambda (e)
+			  (propertize
+			   (getf (car (imdb-select 'movie :mid (getf e :mid)))
+				 :primary-title)
+			   'id (getf e :mid)))
+			known
+			", "))
+	       "#c0c0c0")))
     (insert "\n\n")
     (imdb-load-people-images (list id) (current-buffer) 300 400 0)
     (setq imdb-mode-mode 'person
@@ -1257,7 +1273,7 @@ This will take some hours and use 10GB of disk space."
 	   (save-excursion
 	     (dolist (film films)
 	       (goto-char (point-min))
-	       (forward-line 4)
+	       (forward-line 5)
 	       (unless (text-property-search-forward 'id (getf film :mid) t)
 		 (if (not (getf film :start-year))
 		     (goto-char (point-max))

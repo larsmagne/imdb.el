@@ -1132,6 +1132,17 @@ This will take some hours and use 10GB of disk space."
 		  (put-text-property start (point) 'id id)))))))))
   (kill-buffer (current-buffer)))
 
+(defun imdb-person-query-films (pid)
+  "Query imdb.com for all films that PID has appeared in."
+  (let ((did nil))
+    (imdb-person-get-films
+     pid
+     (lambda (films)
+       (setq did films)))
+    (while (not did)
+      (sleep-for 0.1))
+    did))
+
 (defun imdb-person-update-films (pid)
   (let ((buffer (current-buffer)))
     (imdb-person-get-films
@@ -1160,11 +1171,13 @@ This will take some hours and use 10GB of disk space."
    (format "https://www.imdb.com/name/%s/" pid)
    (lambda (_)
      (goto-char (point-min))
-     (when (search-forward "\n\n" nil t)
-       (url-store-in-cache)
-       (let* ((dom (libxml-parse-html-region (point) (point-max)))
-	      (films
-	       (loop for elem in (dom-by-class dom "\\`filmo-row")
+     (let (films)
+       (when (search-forward "\n\n" nil t)
+	 (url-store-in-cache)
+	 (setq films
+	       (loop for elem in (dom-by-class
+				  (libxml-parse-html-region (point) (point-max))
+				  "\\`filmo-row")
 		     for link = (dom-by-tag elem 'a)
 		     for href = (dom-attr link 'href)
 		     for character = (car (last (dom-children elem)))
@@ -1190,12 +1203,12 @@ This will take some hours and use 10GB of disk space."
 			       :category
 			       (car (split-string (dom-attr elem 'id) "-"))
 			       :character (and (stringp character)
-					       (imdb-clean character))))))))
+					       (imdb-clean character)))))))
 	 (setq films (cl-sort (nreverse films) '<
 			      :key (lambda (elem)
-				     (or (getf elem :year) 1.0e+INF))))
-	 (funcall callback films)))
-     (kill-buffer (current-buffer)))))
+				     (or (getf elem :year) 1.0e+INF)))))
+       (funcall callback films)
+       (kill-buffer (current-buffer))))))
 
 (defun imdb-display-type (type)
   (pcase type

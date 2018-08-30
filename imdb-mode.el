@@ -125,7 +125,14 @@
     (principal-character
      (mid text :references movie)
      (pid text :references person)
-     (character text))))
+     (character text))
+
+    (person-search
+     (primary-name text)
+     (pid text))
+    (movie-search
+     (primary-title text)
+     (mid text))))
 
 (defun imdb-dehyphenate (elem)
   (replace-regexp-in-string "-" "_" (symbol-name elem)))
@@ -181,6 +188,7 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-create-tables ()
   (imdb-initialize)
   (loop for (table . columns) in imdb-tables
+	unless (memq table '(person-search movie-search))
 	do (sqlite3-execute-batch
 	    imdb-db (format
 		     "create table if not exists %s (%s)"
@@ -216,6 +224,11 @@ This will take some hours and use 10GB of disk space."
    "eidx on episode(movie)"
    "pidx on principal(mid, pid)"
    "ppidx on principal(pid)"))
+
+(defun imdb-create-search-tables ()
+  (sqlite3-execute-batch
+   imdb-db
+   "create virtual table person_search USING fts5 (primary_name, pid)"))
 
 (defun imdb-create-index (&rest statements)
   (dolist (statement statements)
@@ -268,17 +281,18 @@ This will take some hours and use 10GB of disk space."
    '(person person-primary-profession person-known-for)
    "name.basics"
    (lambda (elem)
-     (imdb-insert (imdb-make 'person elem))
-     (let ((professions (car (last elem 2)))
-	   (known (car (last elem))))
-       (when professions
-	 (loop for profession in (split-string professions ",")
-	       do (imdb-insert (imdb-make 'person-primary-profession
-					  (list (car elem) profession)))))
-       (when known
-	 (loop for k in (split-string known ",")
-	       do (imdb-insert (imdb-make 'person-known-for
-					  (list (car elem) k))))))))
+     (let ((person (imdb-make 'person elem)))
+       (imdb-insert person)
+       (let ((professions (car (last elem 2)))
+	     (known (car (last elem))))
+	 (when professions
+	   (loop for profession in (split-string professions ",")
+		 do (imdb-insert (imdb-make 'person-primary-profession
+					    (list (car elem) profession)))))
+	 (when known
+	   (loop for k in (split-string known ",")
+		 do (imdb-insert (imdb-make 'person-known-for
+					    (list (car elem) k)))))))))
 
   (imdb-read-simple 'title "title.akas")
 
@@ -1370,6 +1384,106 @@ This will take some hours and use 10GB of disk space."
 	  (let ((kill-buffer-query-functions nil))
 	    (kill-buffer buffer))))))
   (setq imdb-buffers nil))
+
+(defun imdb-completing-read ()
+  (let ((completion-ignore-case t))
+    (completing-read
+     "Person: "
+     (lambda (string predicate flag)
+       (cond
+	;; try-completion
+	((null flag)
+	 (let ((matches (imdb-find 'person-search :person-search '=
+				   (format "%s*" string))))
+	   (cond
+	    ((and (= (length matches) 1)
+		  (equal string (getf (car matches) :primary-name)))
+	     (if predicate
+		 (and (funcall predicate (getf (car matches) :primary-name))
+		      t)
+	       t))
+	    ((null matches)
+	     nil)
+	    (t
+	     (try-completion string
+			     (loop for e in matches
+				   when (or (null predicate)
+					    (funcall
+					     predicate (getf e :primary-name)))
+				   collect (propertize (getf e :primary-name)
+						       'id (getf e :pid))))))))
+	;; all-completions
+	((eq flag t)
+	 (loop for elem in (mapcar
+			    (lambda (e)
+			      (getf e :primary-name))
+			    (imdb-find 'person-search :person-search '=
+				       (format "%s*" string)))
+	       when (or (null predicate)
+			(funcall predicate elem))
+	       collect elem))
+	((eq flag 'lambda)
+	 (not
+	  (not
+	   (imdb-select-where
+	    "select primary_name from person where primary_name = ?"
+	    (downcase string)))))
+	((and (consp flag)
+	      (eq flag 'boundaries))
+	 )
+	((eq flag 'metadata)
+	 `(metadata
+	   (category . basic)
+	   (display-sort-function . imdb-sort-people-completions)))
+	(t
+	 nil))))))
+
+(defun imdb-sort-people-completions (completions)
+  (cl-sort completions '>
+	   :key (lambda (e)
+		  (or (getf (car (imdb-select-where
+				  "select count(*) from participant where pid = ?"
+				  (get-text-property 1 'id e)))
+			    :count)
+		      0))))
+
+(defun imdb-populate-search ()
+  (sqlite3-execute-batch imdb-db "drop table person_search")
+  (sqlite3-execute-batch
+   imdb-db
+   "create virtual table person_search USING fts5 (primary_name, pid)")
+  (sqlite3-transaction imdb-db)
+  (let* ((pids (imdb-select-where "select pid from principal where category in ('actor', 'actress', 'director') group by pid having count(mid) > 10"))
+	 (lines 1)
+	 (total (length pids)))
+    (dolist (pid pids)
+      (when (zerop (% (incf lines) 1000))
+	(message "Read %d lines (%.1f%%)" lines
+		 (* (/ (* lines 1.0) total) 100)))
+      (let ((name (getf (car (imdb-select 'person :pid (getf pid :pid)))
+			:primary-name)))
+	(imdb-insert (imdb-make 'person-search
+				(list name (getf pid :pid)))))))
+  (sqlite3-commit imdb-db)
+
+  (progn
+    (ignore-errors
+      (sqlite3-execute-batch imdb-db "drop table movie_search"))
+    (sqlite3-execute-batch
+     imdb-db
+     "create virtual table movie_search USING fts5 (primary_title, mid)")
+    (sqlite3-transaction imdb-db)
+    (let* ((films (imdb-select-where "select primary_title, movie.mid from movie inner join rating on rating.mid = movie.mid and votes > 100"))
+	   (lines 1)
+	   (total (length films)))
+      (dolist (film films)
+	(when (zerop (% (incf lines) 1000))
+	  (message "Read %d lines (%.1f%%)" lines
+		   (* (/ (* lines 1.0) total) 100)))
+	(imdb-insert (imdb-make 'movie-search
+				(list (getf film :primary-title)
+				      (getf film :mid))))))
+    (sqlite3-commit imdb-db)))
 
 (provide 'imdb-mode)
 

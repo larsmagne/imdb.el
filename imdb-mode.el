@@ -1526,13 +1526,22 @@ This will take some hours and use 10GB of disk space."
 	    try))))))
    ;; all-completions
    ((eq flag t)
-    (imdb-sort-people-completions
-     (loop for e in (imdb-find 'person-search :person-search '=
-			       (format "%s*" string))
-	   collect (propertize (getf e :primary-name)
-			       'id (getf e :pid)))))
+    (imdb-highlight-match
+     string
+     (imdb-sort-people-completions
+      (loop for e in (imdb-find 'person-search :person-search '=
+				(format "%s*" string))
+	    collect (propertize (getf e :primary-name)
+				'id (getf e :pid))))))
    (t
     nil)))
+
+(defun imdb-highlight-match (match strings)
+  (dolist (string strings)
+    (let ((start (search (downcase match) (downcase string))))
+      (put-text-property start (+ start (length match)) 'face 'underline
+			 string)))
+  strings)
 
 (defun imdb-sort-people-completions (completions)
   (cl-sort completions '>
@@ -1573,11 +1582,13 @@ This will take some hours and use 10GB of disk space."
 				(downcase (getf e :primary-title))))))))))
    ;; all-completions
    ((eq flag t)
-    (imdb-sort-film-completions
-     (loop for e in (imdb-find 'movie-search :movie-search '=
-			       (format "%s*" string))
-	   collect (propertize (getf e :primary-title)
-			       'id (getf e :mid)))))
+    (imdb-highlight-match
+     string
+     (imdb-sort-film-completions
+      (loop for e in (imdb-find 'movie-search :movie-search '=
+				(format "%s*" string))
+	    collect (propertize (getf e :primary-title)
+				'id (getf e :mid))))))
    (t
     nil)))
 

@@ -644,13 +644,16 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-film (film)
   "List films matching FILM."
   (interactive (list (imdb-complete-film)))
-  (switch-to-buffer (format "*imdb %s*" film))
-  (let ((inhibit-read-only t))
-    (imdb-mode)
-    (setq imdb-mode-mode 'film-search
-	  imdb-mode-search film)
-    (erase-buffer)
-    (imdb-mode-search-film-1 film)))
+  (let ((mid (get-text-property 1 'id film)))
+    (if mid
+	(imdb-mode-show-film mid)
+      (switch-to-buffer (format "*imdb %s*" film))
+      (let ((inhibit-read-only t))
+	(imdb-mode)
+	(setq imdb-mode-mode 'film-search
+	      imdb-mode-search film)
+	(erase-buffer)
+	(imdb-mode-search-film-1 film)))))
 
 (defun imdb-mode-search-film-1 (film)
   (let ((films (if imdb-mode-regexp-p

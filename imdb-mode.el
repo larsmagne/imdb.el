@@ -643,7 +643,7 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-film (film)
   "List films matching FILM."
-  (interactive (list (imdb-query-user "Film")))
+  (interactive (list (imdb-complete-film)))
   (switch-to-buffer (format "*imdb %s*" film))
   (let ((inhibit-read-only t))
     (imdb-mode)
@@ -714,15 +714,18 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-person (person)
   "List films matching PERSON."
-  (interactive (list (imdb-query-user "Person")))
+  (interactive (list (imdb-complete-person)))
   (imdb-initialize)
-  (switch-to-buffer (format "*imdb %s*" person))
-  (let ((inhibit-read-only t))
-    (imdb-mode)
-    (setq imdb-mode-mode 'people-search
-	  imdb-mode-search person)
-    (erase-buffer)
-    (imdb-mode-search-person-1 person)))
+  (let ((pid (get-text-property 1 'id person)))
+    (if pid
+	(imdb-mode-show-person pid)
+      (switch-to-buffer (format "*imdb %s*" person))
+      (let ((inhibit-read-only t))
+	(imdb-mode)
+	(setq imdb-mode-mode 'people-search
+	      imdb-mode-search person)
+	(erase-buffer)
+	(imdb-mode-search-person-1 person)))))
 
 (defun imdb-mode-search-person-1 (person)
   (let ((people (if imdb-mode-regexp-p
@@ -797,14 +800,17 @@ This will take some hours and use 10GB of disk space."
      ((or (eq imdb-mode-mode 'film-search)
 	  (eq imdb-mode-mode 'intersection)
 	  (eq imdb-mode-mode 'person))
-      (imdb-mode-display-film id))
+      (imdb-mode-show-film id))
      (t
-      (switch-to-buffer (format "*imdb %s*"
-				(getf (car (imdb-select 'person :pid id))
-				      :primary-name)))
-      (let ((inhibit-read-only t))
-	(imdb-mode)
-	(imdb-mode-display-person id))))))
+      (imdb-mode-show-person id)))))
+
+(defun imdb-mode-show-person (id)
+  (switch-to-buffer (format "*imdb %s*"
+			    (getf (car (imdb-select 'person :pid id))
+				  :primary-name)))
+  (let ((inhibit-read-only t))
+    (imdb-mode)
+    (imdb-mode-display-person id)))
 
 (defun imdb-mode-open-imdb ()
   "Open the item under point in a web browser."
@@ -861,7 +867,7 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-mode-film-url (id)
   (format "https://www.imdb.com/title/%s/" id))
 
-(defun imdb-mode-display-film (id)
+(defun imdb-mode-show-film (id)
   (switch-to-buffer (format "*imdb %s*"
 			    (getf (car (imdb-select 'movie :mid id))
 				  :primary-title)))
@@ -1448,6 +1454,7 @@ This will take some hours and use 10GB of disk space."
      (display-completion-list (funcall collection string t)))))
 
 (defun imdb-complete-person ()
+  (imdb-initialize)
   (imdb-completing-read "Person: " 'imdb-complete-person-1))
 
 (defun imdb-complete-person-1 (string flag)
@@ -1476,23 +1483,11 @@ This will take some hours and use 10GB of disk space."
 				(downcase (getf e :primary-name))))))))))
    ;; all-completions
    ((eq flag t)
-    (loop for e in (imdb-find 'person-search :person-search '=
-			      (format "%s*" string))
-	  collect (propertize (getf e :primary-name)
-			      'id (getf e :pid))))
-   ((eq flag 'lambda)
-    (not
-     (not
-      (imdb-select-where
-       "select primary_name from person where primary_name = ?"
-       (downcase string)))))
-   ((and (consp flag)
-	 (eq flag 'boundaries))
-    )
-   ((eq flag 'metadata)
-    `(metadata
-      (category . basic)
-      (display-sort-function . imdb-sort-people-completions)))
+    (imdb-sort-people-completions
+     (loop for e in (imdb-find 'person-search :person-search '=
+			       (format "%s*" string))
+	   collect (propertize (getf e :primary-name)
+			       'id (getf e :pid)))))
    (t
     nil)))
 
@@ -1501,6 +1496,53 @@ This will take some hours and use 10GB of disk space."
 	   :key (lambda (e)
 		  (or (getf (car (imdb-select-where
 				  "select count(*) from participant where pid = ?"
+				  (get-text-property 1 'id e)))
+			    :count)
+		      0))))
+
+(defun imdb-complete-film ()
+  (imdb-initialize)
+  (imdb-completing-read "Film: " 'imdb-complete-film-1))
+
+(defun imdb-complete-film-1 (string flag)
+  (cond
+   ;; try-completion
+   ((null flag)
+    (let ((matches (imdb-find 'movie-search :movie-search '=
+			      (format "%s*" string))))
+      (cond
+       ((and (= (length matches) 1)
+	     (search (downcase string)
+		     (downcase (getf (car matches) :primary-title))))
+	(cons
+	 t
+	 (propertize (getf (car matches) :primary-title)
+		     'id (getf (car matches) :mid))))
+       ((null matches)
+	nil)
+       (t
+	(try-completion
+	 (downcase string)
+	 (loop for e in matches
+	       collect (substring    
+			(downcase (getf e :primary-title))
+			(search (downcase string)
+				(downcase (getf e :primary-title))))))))))
+   ;; all-completions
+   ((eq flag t)
+    (imdb-sort-film-completions
+     (loop for e in (imdb-find 'movie-search :movie-search '=
+			       (format "%s*" string))
+	   collect (propertize (getf e :primary-title)
+			       'id (getf e :mid)))))
+   (t
+    nil)))
+
+(defun imdb-sort-film-completions (completions)
+  (cl-sort completions '>
+	   :key (lambda (e)
+		  (or (getf (car (imdb-select-where
+				  "select votes from rating where mid = ?"
 				  (get-text-property 1 'id e)))
 			    :count)
 		      0))))

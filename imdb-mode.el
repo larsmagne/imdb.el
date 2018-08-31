@@ -146,7 +146,8 @@ This will take some hours and use 10GB of disk space."
   (imdb-download-data)
   (imdb-create-tables)
   (imdb-read-data)
-  (imdb-create-indices))
+  (imdb-create-indices)
+  (imdb-populate-search))
 
 (defun imdb-download-data ()
   (let ((dom
@@ -1596,7 +1597,7 @@ This will take some hours and use 10GB of disk space."
 		  (or (getf (car (imdb-select-where
 				  "select votes from rating where mid = ?"
 				  (get-text-property 1 'id e)))
-			    :count)
+			    :votes)
 		      0))))
 
 (defun imdb-populate-search ()

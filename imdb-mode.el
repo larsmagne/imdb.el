@@ -1545,7 +1545,7 @@ This will take some hours and use 10GB of disk space."
   (cl-sort completions '>
 	   :key (lambda (e)
 		  (or (getf (car (imdb-select-where
-				  "select count(*) from principal where pid = ? and category in ('actor', 'actress', 'director')"
+				  "select count(*) from principal inner join movie on movie.mid = principal.mid where pid = ? and category in ('actor', 'actress', 'director') and movie.type = 'movie'"
 				  (get-text-property 1 'id e)))
 			    :count)
 		      0))))

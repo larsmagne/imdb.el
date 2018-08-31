@@ -1477,13 +1477,17 @@ This will take some hours and use 10GB of disk space."
        ((null matches)
 	nil)
        (t
-	(try-completion
-	 (downcase string)
-	 (loop for e in matches
-	       collect (substring    
-			(downcase (getf e :primary-name))
-			(search (downcase string)
-				(downcase (getf e :primary-name))))))))))
+	(let ((try
+	       (try-completion
+		(downcase string)
+		(loop for e in matches
+		      collect (substring    
+			       (downcase (getf e :primary-name))
+			       (search (downcase string)
+				       (downcase (getf e :primary-name))))))))
+	  (if (eq try t)
+	      (downcase string)
+	    try))))))
    ;; all-completions
    ((eq flag t)
     (imdb-sort-people-completions
@@ -1498,7 +1502,7 @@ This will take some hours and use 10GB of disk space."
   (cl-sort completions '>
 	   :key (lambda (e)
 		  (or (getf (car (imdb-select-where
-				  "select count(*) from participant where pid = ?"
+				  "select count(*) from participant where pid = ? and category in ('actor', 'actress', 'director')"
 				  (get-text-property 1 'id e)))
 			    :count)
 		      0))))

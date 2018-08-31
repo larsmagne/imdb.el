@@ -377,6 +377,10 @@ This will take some hours and use 10GB of disk space."
   (apply 'imdb-find table (loop for (key val) on values by #'cddr
 				append (list key '= val))))
 
+(defun imdb-column (column)
+  (intern (format ":%s" (replace-regexp-in-string "[^-a-zA-Z0-9]" ""
+						  (imdb-hyphenate column)))
+	  obarray))
 
 (defun imdb-select-where (statement &rest values)
   (imdb-initialize)
@@ -386,17 +390,10 @@ This will take some hours and use 10GB of disk space."
      statement
      (coerce values 'vector)
      (lambda (row names)
-       (push
-	(nconc (loop for value in row
-		     for column in names
-		     append (list
-			     (intern (format ":%s"
-					     (imdb-hyphenate
-					      (replace-regexp-in-string
-					       "[^_a-zA-Z0-9]" "" column)))
-				     obarray)
-			     value)))
-	result)))
+       (push (nconc (loop for value in row
+			  for column in names
+			  append (list (imdb-column column) value)))
+	     result)))
     (nreverse result)))
 
 (defun imdb-find (table &rest values)
@@ -1293,23 +1290,24 @@ This will take some hours and use 10GB of disk space."
     (imdb-person-get-films
      pid
      (lambda (films)
-       (with-current-buffer buffer
-	 (setq films (imdb-mode-filter films))
-	 (setq imdb-mode-extra-data films)
-	 (let ((inhibit-read-only t))
-	   (save-excursion
-	     (dolist (film films)
-	       (goto-char (point-min))
-	       (forward-line 5)
-	       (unless (text-property-search-forward 'id (getf film :mid) t)
-		 (if (not (getf film :start-year))
-		     (goto-char (point-max))
-		   (while (and (looking-at "[0-9]+")
-			       (let ((year (string-to-number
-					    (match-string 0))))
-				 (<= year (getf film :start-year))))
-		     (forward-line 1)))
-		 (imdb-mode-person-film film pid))))))))))
+       (when (buffer-live-p buffer)
+	 (with-current-buffer buffer
+	   (setq films (imdb-mode-filter films))
+	   (setq imdb-mode-extra-data films)
+	   (let ((inhibit-read-only t))
+	     (save-excursion
+	       (dolist (film films)
+		 (goto-char (point-min))
+		 (forward-line 5)
+		 (unless (text-property-search-forward 'id (getf film :mid) t)
+		   (if (not (getf film :start-year))
+		       (goto-char (point-max))
+		     (while (and (looking-at "[0-9]+")
+				 (let ((year (string-to-number
+					      (match-string 0))))
+				   (<= year (getf film :start-year))))
+		       (forward-line 1)))
+		   (imdb-mode-person-film film pid)))))))))))
 
 (defun imdb-person-get-films (pid callback)
   (imdb-url-retrieve
@@ -1547,7 +1545,7 @@ This will take some hours and use 10GB of disk space."
   (cl-sort completions '>
 	   :key (lambda (e)
 		  (or (getf (car (imdb-select-where
-				  "select count(*) from participant where pid = ? and category in ('actor', 'actress', 'director')"
+				  "select count(*) from principal where pid = ? and category in ('actor', 'actress', 'director')"
 				  (get-text-property 1 'id e)))
 			    :count)
 		      0))))

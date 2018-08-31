@@ -1385,58 +1385,116 @@ This will take some hours and use 10GB of disk space."
 	    (kill-buffer buffer))))))
   (setq imdb-buffers nil))
 
-(defun imdb-completing-read ()
-  (let ((completion-ignore-case t))
-    (completing-read
-     "Person: "
-     (lambda (string predicate flag)
-       (cond
-	;; try-completion
-	((null flag)
-	 (let ((matches (imdb-find 'person-search :person-search '=
-				   (format "%s*" string))))
-	   (cond
-	    ((and (= (length matches) 1)
-		  (equal string (getf (car matches) :primary-name)))
-	     (if predicate
-		 (and (funcall predicate (getf (car matches) :primary-name))
-		      t)
-	       t))
-	    ((null matches)
-	     nil)
-	    (t
-	     (try-completion string
-			     (loop for e in matches
-				   when (or (null predicate)
-					    (funcall
-					     predicate (getf e :primary-name)))
-				   collect (propertize (getf e :primary-name)
-						       'id (getf e :pid))))))))
-	;; all-completions
-	((eq flag t)
-	 (loop for elem in (mapcar
-			    (lambda (e)
-			      (getf e :primary-name))
-			    (imdb-find 'person-search :person-search '=
-				       (format "%s*" string)))
-	       when (or (null predicate)
-			(funcall predicate elem))
-	       collect elem))
-	((eq flag 'lambda)
-	 (not
-	  (not
-	   (imdb-select-where
-	    "select primary_name from person where primary_name = ?"
-	    (downcase string)))))
-	((and (consp flag)
-	      (eq flag 'boundaries))
-	 )
-	((eq flag 'metadata)
-	 `(metadata
-	   (category . basic)
-	   (display-sort-function . imdb-sort-people-completions)))
-	(t
-	 nil))))))
+(defvar imdb-minibuffer-local-completion-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map minibuffer-local-map)
+    (define-key map "\t" 'minibuffer-complete)
+    map)
+  "Local keymap for minibuffer input with completion.")
+
+(defun imdb-completing-read (prompt collection)
+  (let ((completion-in-region-function
+	 (lambda (start end _ &optional __)
+	   (let ((string (buffer-substring start end)))
+	     (when (> (length string) 2)
+	       (imdb-complete string collection)))))
+	(minibuffer-allow-text-properties t))
+    (read-from-minibuffer prompt nil imdb-minibuffer-local-completion-map)))
+
+(defun imdb-complete (string collection)
+  (let ((try (funcall collection string nil)))
+    (cond
+     ((null try)
+      )
+     ((consp try)
+      (delete-region (minibuffer-prompt-end)
+		     (point-max))
+      (insert (cdr try)))
+     (t
+      (if (equal try string)
+	  (imdb-complete-show-matches string collection)
+	(delete-region (minibuffer-prompt-end)
+		       (point-max))
+	(insert try))))))
+
+(defun imdb-complete-show-matches (string collection)
+  (let ((completion-list-insert-choice-function
+	 (lambda (beg end newtext)
+	   (delete-region (minibuffer-prompt-end) (point-max))
+	   (insert newtext)))
+	(completion-list-mode-map imdb-completion-list-mode-map))
+    (when (buffer-live-p "*Completions*")
+      (kill-buffer "*Completions*"))
+    (with-displayed-buffer-window
+     "*Completions*"
+     ;; This is a copy of `display-buffer-fallback-action'
+     ;; where `display-buffer-use-some-window' is replaced
+     ;; with `display-buffer-at-bottom'.
+     `((display-buffer--maybe-same-window
+	display-buffer-reuse-window
+	display-buffer--maybe-pop-up-frame
+	;; Use `display-buffer-below-selected' for inline completions,
+	;; but not in the minibuffer (e.g. in `eval-expression')
+	;; for which `display-buffer-at-bottom' is used.
+	,(if (eq (selected-window) (minibuffer-window))
+             'display-buffer-at-bottom
+           'display-buffer-below-selected))
+       ,(if temp-buffer-resize-mode
+	    '(window-height . resize-temp-buffer-window)
+	  '(window-height . fit-window-to-buffer))
+       ,(when temp-buffer-resize-mode
+	  '(preserve-size . (nil . t))))
+     nil
+     (display-completion-list (funcall collection string t)))))
+
+(defun imdb-complete-person ()
+  (imdb-completing-read "Person: " 'imdb-complete-person-1))
+
+(defun imdb-complete-person-1 (string flag)
+  (cond
+   ;; try-completion
+   ((null flag)
+    (let ((matches (imdb-find 'person-search :person-search '=
+			      (format "%s*" string))))
+      (cond
+       ((and (= (length matches) 1)
+	     (search (downcase string)
+		     (downcase (getf (car matches) :primary-name))))
+	(cons
+	 t
+	 (propertize (getf (car matches) :primary-name)
+		     'id (getf (car matches) :pid))))
+       ((null matches)
+	nil)
+       (t
+	(try-completion
+	 (downcase string)
+	 (loop for e in matches
+	       collect (substring    
+			(downcase (getf e :primary-name))
+			(search (downcase string)
+				(downcase (getf e :primary-name))))))))))
+   ;; all-completions
+   ((eq flag t)
+    (loop for e in (imdb-find 'person-search :person-search '=
+			      (format "%s*" string))
+	  collect (propertize (getf e :primary-name)
+			      'id (getf e :pid))))
+   ((eq flag 'lambda)
+    (not
+     (not
+      (imdb-select-where
+       "select primary_name from person where primary_name = ?"
+       (downcase string)))))
+   ((and (consp flag)
+	 (eq flag 'boundaries))
+    )
+   ((eq flag 'metadata)
+    `(metadata
+      (category . basic)
+      (display-sort-function . imdb-sort-people-completions)))
+   (t
+    nil)))
 
 (defun imdb-sort-people-completions (completions)
   (cl-sort completions '>
@@ -1484,6 +1542,66 @@ This will take some hours and use 10GB of disk space."
 				(list (getf film :primary-title)
 				      (getf film :mid))))))
     (sqlite3-commit imdb-db)))
+
+(defun imdb-choose-completion (&optional event)
+  "Choose the completion at point.
+If EVENT, use EVENT's position to determine the starting position."
+  (interactive (list last-nonmenu-event))
+  ;; In case this is run via the mouse, give temporary modes such as
+  ;; isearch a chance to turn off.
+  (run-hooks 'mouse-leave-buffer-hook)
+  (with-current-buffer (window-buffer (posn-window (event-start event)))
+    (let ((buffer completion-reference-buffer)
+          (base-size completion-base-size)
+          (base-position completion-base-position)
+          (insert-function completion-list-insert-choice-function)
+          (choice
+           (save-excursion
+             (goto-char (posn-point (event-start event)))
+             (let (beg end)
+               (cond
+                ((and (not (eobp)) (get-text-property (point) 'mouse-face))
+                 (setq end (point) beg (1+ (point))))
+                ((and (not (bobp))
+                      (get-text-property (1- (point)) 'mouse-face))
+                 (setq end (1- (point)) beg (point)))
+                (t (error "No completion here")))
+               (setq beg (previous-single-property-change beg 'mouse-face))
+               (setq end (or (next-single-property-change end 'mouse-face)
+                             (point-max)))
+               (buffer-substring beg end)))))
+
+      (unless (buffer-live-p buffer)
+        (error "Destination buffer is dead"))
+      (quit-window nil (posn-window (event-start event)))
+
+      (with-current-buffer buffer
+        (choose-completion-string
+         choice buffer
+         (or base-position
+             (when base-size
+               ;; Someone's using old completion code that doesn't know
+               ;; about base-position yet.
+               (list (+ base-size (field-beginning))))
+             ;; If all else fails, just guess.
+             (list (choose-completion-guess-base-position choice)))
+         insert-function)))))
+
+(defvar imdb-completion-list-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [mouse-2] 'imdb-choose-completion)
+    (define-key map [follow-link] 'mouse-face)
+    (define-key map [down-mouse-2] nil)
+    (define-key map "\C-m" 'imdb-choose-completion)
+    (define-key map "\e\e\e" 'delete-completion-window)
+    (define-key map [left] 'previous-completion)
+    (define-key map [right] 'next-completion)
+    (define-key map [?\t] 'next-completion)
+    (define-key map [backtab] 'previous-completion)
+    (define-key map "q" 'quit-window)
+    (define-key map "z" 'kill-current-buffer)
+    map)
+  "Local map for completion list buffers.")
 
 (provide 'imdb-mode)
 

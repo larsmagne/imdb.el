@@ -1398,8 +1398,44 @@ This will take some hours and use 10GB of disk space."
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map minibuffer-local-map)
     (define-key map "\t" 'minibuffer-complete)
+    (define-key map [(meta n)] 'imdb-next-completion)
+    (define-key map [(meta p)] 'imdb-prev-completion)
     map)
   "Local keymap for minibuffer input with completion.")
+
+(defun imdb-next-completion ()
+  (interactive)
+  (let ((buffer (current-buffer)))
+    (when (get-buffer "*Completions*")
+      (set-buffer "*Completions*")
+      (next-completion 1)
+      (imdb-insert-completion buffer))))
+
+(defun imdb-insert-completion (buffer)
+  (set-window-point (get-buffer-window) (point))
+  (let ((string
+	 (let (beg end)
+           (when
+	       (cond ((and (not (eobp)) (get-text-property (point) 'mouse-face))
+		      (setq end (point) beg (1+ (point))))
+		     ((and (not (bobp))
+			   (get-text-property (1- (point)) 'mouse-face))
+		      (setq end (1- (point)) beg (point))))
+	     (setq beg (previous-single-property-change beg 'mouse-face))
+	     (setq end (or (next-single-property-change end 'mouse-face)
+			   (point-max)))
+	     (buffer-substring beg end)))))
+    (set-buffer buffer)
+    (delete-region (minibuffer-prompt-end) (point-max))
+    (insert string)))
+
+(defun imdb-prev-completion ()
+  (interactive)
+  (let ((buffer (current-buffer)))
+    (when (get-buffer "*Completions*")
+      (set-buffer "*Completions*")
+      (previous-completion 1)
+      (imdb-insert-completion buffer))))
 
 (defun imdb-completing-read (prompt collection)
   (let ((completion-in-region-function
@@ -1428,7 +1464,7 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-complete-show-matches (string collection)
   (let ((completion-list-insert-choice-function
-	 (lambda (beg end newtext)
+	 (lambda (_beg _end newtext)
 	   (delete-region (minibuffer-prompt-end) (point-max))
 	   (insert newtext)))
 	(completion-list-mode-map imdb-completion-list-mode-map))
@@ -1601,7 +1637,6 @@ If EVENT, use EVENT's position to determine the starting position."
   (run-hooks 'mouse-leave-buffer-hook)
   (with-current-buffer (window-buffer (posn-window (event-start event)))
     (let ((buffer completion-reference-buffer)
-          (base-size completion-base-size)
           (base-position completion-base-position)
           (insert-function completion-list-insert-choice-function)
           (choice
@@ -1628,10 +1663,6 @@ If EVENT, use EVENT's position to determine the starting position."
         (choose-completion-string
          choice buffer
          (or base-position
-             (when base-size
-               ;; Someone's using old completion code that doesn't know
-               ;; about base-position yet.
-               (list (+ base-size (field-beginning))))
              ;; If all else fails, just guess.
              (list (choose-completion-guess-base-position choice)))
          insert-function)))))

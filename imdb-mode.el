@@ -224,7 +224,8 @@ This will take some hours and use 10GB of disk space."
    "cidx on crew(mid, pid)"
    "eidx on episode(movie)"
    "pidx on principal(mid, pid)"
-   "ppidx on principal(pid)"))
+   "ppidx on principal(pid)"
+   "mtidx on movie(primary_title)"))
 
 (defun imdb-create-search-tables ()
   (sqlite3-execute-batch
@@ -1097,7 +1098,7 @@ This will take some hours and use 10GB of disk space."
 		when (and src (string-match "_AL_" src))
 		return (shr-expand-url
 			(dom-attr (dom-parent dom image) 'href)
-			"http://www.imdb.com/"))
+			"https://www.imdb.com/"))
 	  buffer))
        (kill-buffer (current-buffer))))))
 

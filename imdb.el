@@ -30,12 +30,23 @@
 (require 'dom)
 (require 'json)
 
-(defvar imdb-query-url "http://www.imdb.com/find?q=%s&s=tt&ref_=fn_al_tt_mr")
+(defvar imdb-query-url "https://www.imdb.com/find?q=%s&s=tt&ref_=fn_al_tt_mr")
+
+(defun imdb-url-retrieve-synchronously (url)
+  (let ((cache (url-cache-create-filename url)))
+    (if (file-exists-p cache)
+	(with-current-buffer (generate-new-buffer " *imdb url cache*")
+	  (erase-buffer)
+	  (set-buffer-multibyte nil)
+	  (insert-file-contents-literally cache)
+	  (current-buffer))
+      (url-retrieve-synchronously url))))
 
 (defun imdb-get-data (title)
-  (with-current-buffer (url-retrieve-synchronously
+  (with-current-buffer (imdb-url-retrieve-synchronously
 			(format imdb-query-url
 				(replace-regexp-in-string "&" "%26" title)))
+    (url-store-in-cache)
     (goto-char (point-min))
     (prog1
 	(when (re-search-forward "\n\n" nil t)
@@ -43,8 +54,9 @@
       (kill-buffer (current-buffer)))))
 
 (defun imdb-get-image-and-country (id &optional image-only)
-  (with-current-buffer (url-retrieve-synchronously
-			(format "http://www.imdb.com/title/%s/" id))
+  (with-current-buffer (imdb-url-retrieve-synchronously
+			(format "https://www.imdb.com/title/%s/" id))
+    (url-store-in-cache)
     (goto-char (point-min))
     (let ((country (save-excursion
 		     (when (re-search-forward
@@ -60,7 +72,7 @@
 			     (imdb-get-image
 			      (shr-expand-url
 			       (dom-attr (dom-parent dom image) 'href)
-			       "http://www.imdb.com/"))
+			       "https://www.imdb.com/"))
 			   (list (imdb-get-image-string src)
 				 country
 				 (loop for link in (dom-by-tag dom 'a)
@@ -72,7 +84,8 @@
 	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-string (url)
-  (with-current-buffer (url-retrieve-synchronously url)
+  (with-current-buffer (imdb-url-retrieve-synchronously url)
+    (url-store-in-cache)
     (goto-char (point-min))
     (prog1
 	(when (search-forward "\n\n" nil t)
@@ -89,12 +102,14 @@
 (defun imdb-get-image (url)
   (let* ((json (imdb-get-image-json url))
 	 (src (imdb-get-image-from-json json)))
-    (with-current-buffer (url-retrieve-synchronously src)
-      (goto-char (point-min))
-      (prog1
-	  (when (search-forward "\n\n" nil t)
-	    (buffer-substring (point) (point-max)))
-	(kill-buffer (current-buffer))))))
+    (when src
+      (with-current-buffer (imdb-url-retrieve-synchronously src)
+	(url-store-in-cache)
+	(goto-char (point-min))
+	(prog1
+	    (when (search-forward "\n\n" nil t)
+	      (buffer-substring (point) (point-max)))
+	  (kill-buffer (current-buffer)))))))
 
 (defun imdb-get-image-from-json (json)
   (let* ((images
@@ -116,7 +131,8 @@
 	  return (cdr (assq 'src image)))))
 
 (defun imdb-get-image-json (url)
-  (with-current-buffer (url-retrieve-synchronously url)
+  (with-current-buffer (imdb-url-retrieve-synchronously url)
+    (url-store-in-cache)
     (goto-char (point-min))
     (prog1
 	(imdb-extract-image-json)

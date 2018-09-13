@@ -435,6 +435,7 @@ This will take some hours and use 10GB of disk space."
     (define-key map "p" 'imdb-person)
     (define-key map "x" 'imdb-mode-toggle-insignificant)
     (define-key map "l" 'imdb-mode-load-all-images)
+    (define-key map "A" 'imdb-mode-person-age)
     (define-key map "a" 'imdb-mode-show-acting)
     (define-key map "d" 'imdb-mode-show-directing)
     (define-key map "&" 'imdb-mode-open-imdb)
@@ -482,6 +483,22 @@ This will take some hours and use 10GB of disk space."
       (put-text-property (line-beginning-position)
 			 (1+ (line-beginning-position))
 			 'mark (not marked)))))
+
+(defun imdb-mode-person-age ()
+  "Display the age of the actur under point when the movie was made."
+  (interactive)
+  (let* ((pid (get-text-property (point) 'id))
+	 (mid imdb-mode-search)
+	 (person (car (imdb-select 'person :pid pid)))
+	 (film (car (imdb-select 'movie :mid mid))))
+    (if (and (getf film :start-year)
+	     (getf person :birth-year))
+	(message "%s was %s years old when %s was made"
+		 (getf person :primary-name)
+		 (- (getf film :start-year)
+		    (getf person :birth-year))
+		 (getf film :primary-title))
+      (message "Insufficient data"))))
 
 (defun imdb-mode-display-intersection ()
   "Show films that have all the people involved."
@@ -899,6 +916,10 @@ This will take some hours and use 10GB of disk space."
 				   :weight bold))))
        "\n"))
 
+    
+    (when (getf film :start-year)
+      (insert (imdb-face (format "%s " (getf film :start-year)))))
+    
     (let ((rating (car (imdb-select 'rating :mid id))))
       (when rating
 	(insert
@@ -1460,7 +1481,9 @@ This will take some hours and use 10GB of disk space."
 	  (imdb-complete-show-matches string collection)
 	(delete-region (minibuffer-prompt-end)
 		       (point-max))
-	(insert try))))))
+	(if (eq try t)
+	    (insert string)
+	  (insert try)))))))
 
 (defun imdb-complete-show-matches (string collection)
   (let ((completion-list-insert-choice-function

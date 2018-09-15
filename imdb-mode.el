@@ -1561,7 +1561,7 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-highlight-match (match strings)
   (dolist (string strings)
-    (let ((start (search (downcase match) (downcase string))))
+    (when-let ((start (search (downcase match) (downcase string))))
       (put-text-property start (+ start (length match)) 'face 'underline
 			 string)))
   strings)

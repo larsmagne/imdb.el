@@ -487,18 +487,22 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-mode-person-age ()
   "Display the age of the actur under point when the movie was made."
   (interactive)
-  (let* ((pid (get-text-property (point) 'id))
-	 (mid imdb-mode-search)
-	 (person (car (imdb-select 'person :pid pid)))
-	 (film (car (imdb-select 'movie :mid mid))))
-    (if (and (getf film :start-year)
-	     (getf person :birth-year))
-	(message "%s was %s years old when %s was made"
-		 (getf person :primary-name)
-		 (- (getf film :start-year)
-		    (getf person :birth-year))
-		 (getf film :primary-title))
-      (message "Insufficient data"))))
+  (let (mid pid)
+    (if (eq imdb-mode-mode 'person)
+	(setq pid imdb-mode-search
+	      mid (get-text-property (point) 'id))
+      (setq pid (get-text-property (point) 'id)
+	    mid imdb-mode-search))
+    (let ((person (car (imdb-select 'person :pid pid)))
+	  (film (car (imdb-select 'movie :mid mid))))
+      (if (and (getf film :start-year)
+	       (getf person :birth-year))
+	  (message "%s was %s years old when %s was made"
+		   (getf person :primary-name)
+		   (- (getf film :start-year)
+		      (getf person :birth-year))
+		   (getf film :primary-title))
+	(message "Insufficient data")))))
 
 (defun imdb-mode-display-intersection ()
   "Show films that have all the people involved."

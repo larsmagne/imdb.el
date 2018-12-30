@@ -53,7 +53,7 @@
 	  (libxml-parse-html-region (point) (point-max)))
       (kill-buffer (current-buffer)))))
 
-(defun imdb-get-image-and-country (id &optional image-only)
+(defun imdb-get-image-and-country (id &optional image-only just-image)
   (with-current-buffer (imdb-url-retrieve-synchronously
 			(format "https://www.imdb.com/title/%s/" id))
     (url-store-in-cache)
@@ -68,19 +68,22 @@
 		  for image in (dom-by-tag dom 'img)
 		  for src = (dom-attr image 'src)
 		  when (and src (string-match "_AL_" src))
-		  return (if image-only
-			     (imdb-get-image
-			      (shr-expand-url
-			       (dom-attr (dom-parent dom image) 'href)
-			       "https://www.imdb.com/"))
-			   (list (imdb-get-image-string src)
-				 country
-				 (loop for link in (dom-by-tag dom 'a)
-				       for href = (dom-attr link 'href)
-				       when (and href
-						 (string-match "ref_=tt_ov_dr$"
-							       href))
-				       return (dom-texts link))))))
+		  return
+		  (if image-only
+		      (imdb-get-image
+		       (shr-expand-url
+			(dom-attr (dom-parent dom image) 'href)
+			"https://www.imdb.com/"))
+		    (if just-image
+			(imdb-get-image-data src)
+		      (list (imdb-get-image-string src)
+			    country
+			    (loop for link in (dom-by-tag dom 'a)
+				  for href = (dom-attr link 'href)
+				  when (and href
+					    (string-match "ref_=tt_ov_dr$"
+							  href))
+				  return (dom-texts link)))))))
 	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-string (url)
@@ -99,6 +102,15 @@
 	       'display image))))
       (kill-buffer (current-buffer)))))
 
+(defun imdb-get-image-data (url)
+  (with-current-buffer (imdb-url-retrieve-synchronously url)
+    (url-store-in-cache)
+    (goto-char (point-min))
+    (prog1
+	(when (search-forward "\n\n" nil t)
+	  (buffer-substring (point) (point-max)))
+      (kill-buffer (current-buffer)))))
+
 (defun imdb-get-image (url)
   (let* ((json (imdb-get-image-json url))
 	 (src (imdb-get-image-from-json json)))
@@ -113,7 +125,8 @@
 
 (defun imdb-get-image-from-json (json)
   (let* ((images
-	  (cdr (cadr (cadr (assq 'galleries (assq 'mediaviewer json))))))
+	  (cdr (assq 'allImages
+		     (cadr (assq 'galleries (assq 'mediaviewer json))))))
 	 (aax
 	  (cdr
 	   (assq 'aaxUrl

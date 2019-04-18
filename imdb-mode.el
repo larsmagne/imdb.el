@@ -1629,7 +1629,8 @@ This will take some hours and use 10GB of disk space."
 		      0))))
 
 (defun imdb-populate-search ()
-  (sqlite3-execute-batch imdb-db "drop table person_search")
+  (ignore-errors
+    (sqlite3-execute-batch imdb-db "drop table person_search"))
   (sqlite3-execute-batch
    imdb-db
    "create virtual table person_search USING fts5 (primary_name, pid)")
@@ -1647,24 +1648,23 @@ This will take some hours and use 10GB of disk space."
 				(list name (getf pid :pid)))))))
   (sqlite3-commit imdb-db)
 
-  (progn
-    (ignore-errors
-      (sqlite3-execute-batch imdb-db "drop table movie_search"))
-    (sqlite3-execute-batch
-     imdb-db
-     "create virtual table movie_search USING fts5 (primary_title, mid)")
-    (sqlite3-transaction imdb-db)
-    (let* ((films (imdb-select-where "select primary_title, movie.mid from movie inner join rating on rating.mid = movie.mid and votes > 100"))
-	   (lines 1)
-	   (total (length films)))
-      (dolist (film films)
-	(when (zerop (% (incf lines) 1000))
-	  (message "Read %d lines (%.1f%%)" lines
-		   (* (/ (* lines 1.0) total) 100)))
-	(imdb-insert (imdb-make 'movie-search
-				(list (getf film :primary-title)
-				      (getf film :mid))))))
-    (sqlite3-commit imdb-db)))
+  (ignore-errors
+    (sqlite3-execute-batch imdb-db "drop table movie_search"))
+  (sqlite3-execute-batch
+   imdb-db
+   "create virtual table movie_search USING fts5 (primary_title, mid)")
+  (sqlite3-transaction imdb-db)
+  (let* ((films (imdb-select-where "select primary_title, movie.mid from movie inner join rating on rating.mid = movie.mid and votes > 100"))
+	 (lines 1)
+	 (total (length films)))
+    (dolist (film films)
+      (when (zerop (% (incf lines) 1000))
+	(message "Read %d lines (%.1f%%)" lines
+		 (* (/ (* lines 1.0) total) 100)))
+      (imdb-insert (imdb-make 'movie-search
+			      (list (getf film :primary-title)
+				    (getf film :mid))))))
+  (sqlite3-commit imdb-db))
 
 (defun imdb-choose-completion (&optional event)
   "Choose the completion at point.

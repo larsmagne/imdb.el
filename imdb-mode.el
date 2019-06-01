@@ -1166,7 +1166,7 @@ This will take some hours and use 10GB of disk space."
 		   (let ((inhibit-read-only t))
 		     (delete-region (point) (line-end-position))
 		     (insert-image
-		      (create-image data 'imagemagick t :height 400))))))))
+		      (create-image data (imdb-mode--image-type) t :height 400))))))))
 	 (kill-buffer (current-buffer)))))))
 
 (defun imdb-insert-placeholder (width height &optional color)
@@ -1296,7 +1296,7 @@ This will take some hours and use 10GB of disk space."
 		      (start (point)))
 		  (delete-region (point) (1+ (point)))
 		  (insert-image
-		   (create-image data 'imagemagick t :height height))
+		   (create-image data (imdb-mode--image-type) t :height height))
 		  (put-text-property start (point) 'id id)))))))))
   (kill-buffer (current-buffer)))
 
@@ -1720,6 +1720,13 @@ If EVENT, use EVENT's position to determine the starting position."
     (define-key map "z" 'kill-current-buffer)
     map)
   "Local map for completion list buffers.")
+
+(defun imdb-mode--image-type ()
+  (if (or (and (fboundp 'image-scaling-p)
+	       (image-scaling-p))
+	  (not (fboundp 'imagemagick-types)))
+      nil
+    'imagemagick))
 
 (provide 'imdb-mode)
 

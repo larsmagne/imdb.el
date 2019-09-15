@@ -156,7 +156,7 @@
 ;; This will probably stop working when IMDB change...  whatever.
 (defun imdb-extract-image-json ()
   (when (and (search-forward "\n\n" nil t)
-	     (search-forward "window.IMDbReactInitialState.push(" nil t))
+	     (search-forward "window.IMDbMediaViewerInitialState = " nil t))
     (delete-region (point-min) (point))
     (end-of-line)
     (search-backward "}")

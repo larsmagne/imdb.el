@@ -207,7 +207,8 @@
   (interactive "sTitle: ")
   (let* ((data (imdb-extract-data
 		(imdb-get-data title)))
-	 (result (completing-read "Movie: " (cdr data) nil nil (car data))))
+	 (result (completing-read "Movie: " (cdr data) nil nil
+				  (cons (car data) 0))))
     (when (string-match " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)," result)
       (list :year (match-string 1 result)
 	    :country (match-string 2 result)

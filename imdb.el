@@ -205,7 +205,8 @@
 (defun imdb-query (title)
   "Query IMDB for TITLE, and then prompt the user for the right match."
   (interactive "sTitle: ")
-  (let* ((data (imdb-extract-data
+  (let* ((max-mini-window-height 0.5)
+	 (data (imdb-extract-data
 		(imdb-get-data title)))
 	 (result (completing-read "Movie: " (cdr data) nil nil
 				  (cons (car data) 0))))

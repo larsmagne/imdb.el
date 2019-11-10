@@ -1180,7 +1180,7 @@ This will take some hours and use 10GB of disk space."
 		     :gradient "background"
                      :stroke-width 2
 		     :stroke-color "black"))
-    (insert-image (svg-image svg))))
+    (insert-image (svg-image svg :scale 1))))
 
 (defun imdb-clean (string)
   (string-trim (replace-regexp-in-string "[  \t\n]+" " " string)))

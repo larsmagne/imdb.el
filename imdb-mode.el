@@ -133,12 +133,6 @@
      (primary-title text)
      (mid text))))
 
-(defun imdb-dehyphenate (elem)
-  (replace-regexp-in-string "-" "_" (symbol-name elem)))
-
-(defun imdb-hyphenate (elem)
-  (replace-regexp-in-string "_" "-" elem))
-
 (defun imdb-download-and-create ()
   "Download the IMDB data files and create the sqlite3 database.
 This will take some hours and use 10GB of disk space."
@@ -223,7 +217,7 @@ This will take some hours and use 10GB of disk space."
   (with-temp-buffer
     (dolist (table tables)
       (sqlite3-execute-batch imdb-db (format "delete from %s"
-					     (imdb-dehyphenate table))))
+					     (sqorm-dehyphenate table))))
     (sqlite3-transaction imdb-db)
     (insert-file-contents (format "~/.emacs.d/imdb/%s.tsv" file))
     (forward-line 1)

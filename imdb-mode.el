@@ -55,6 +55,7 @@
 (require 'browse-url)
 
 (defvar imdb-db nil)
+(defvar imdb-db-directory (expand-file-name "imdb" user-emacs-directory))
 
 (defvar imdb-mode-extra-data nil)
 (defvar imdb-mode-filter-insignificant nil)
@@ -166,7 +167,7 @@ This will take some hours and use 10GB of disk space."
 				   (file-name-nondirectory
 				    (url-filename
 				     (url-generic-parse-url url))))
-				  "~/.emacs.d/imdb")))
+				  imdb-db-directory)))
       (unless (file-exists-p (file-name-directory file))
 	(make-directory (file-name-directory file) t))
       (write-region (point) (point-max) file))
@@ -174,7 +175,8 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-initialize ()
   (unless imdb-db
-    (setq imdb-db (sqorm-open "~/.emacs.d/imdb/imdb.sqlite3"))))
+    (setq imdb-db (sqorm-open (expand-file-name "imdb.sqlite3"
+                                                imdb-db-directory)))))
 
 (defun imdb-create-tables ()
   (imdb-initialize)
@@ -219,7 +221,8 @@ This will take some hours and use 10GB of disk space."
       (sqlite3-execute-batch imdb-db (format "delete from %s"
 					     (sqorm-dehyphenate table))))
     (sqlite3-transaction imdb-db)
-    (insert-file-contents (format "~/.emacs.d/imdb/%s.tsv" file))
+    (insert-file-contents (format (expand-file-name "%s.tsv" imdb-db-directory)
+                                  file))
     (forward-line 1)
     (let ((lines 1)
 	  (total (count-lines (point-min) (point-max))))

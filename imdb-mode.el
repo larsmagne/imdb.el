@@ -238,33 +238,33 @@ This will take some hours and use 10GB of disk space."
   (imdb-read-tsv
    (list table) file
    (lambda (elem)
-     (imdb-insert (imdb-make table elem)))))
+     (sqorm-insert (imdb-make table elem)))))
 
 (defun imdb-read-data ()
   (imdb-read-tsv
    '(movie movie-genre) "title.basics"
    (lambda (elem)
-     (imdb-insert (imdb-make 'movie elem))
+     (sqorm-insert (imdb-make 'movie elem))
      (when (car (last elem))
        (loop for genre in (split-string (car (last elem)) ",")
-	     do (imdb-insert (imdb-make 'movie-genre
-					(list (car elem) genre)))))))
+	     do (sqorm-insert (imdb-make 'movie-genre
+					 (list (car elem) genre)))))))
 
   (imdb-read-tsv
    '(person person-primary-profession person-known-for)
    "name.basics"
    (lambda (elem)
      (let ((person (imdb-make 'person elem)))
-       (imdb-insert person)
+       (sqorm-insert person)
        (let ((professions (car (last elem 2)))
 	     (known (car (last elem))))
 	 (when professions
 	   (loop for profession in (split-string professions ",")
-		 do (imdb-insert (imdb-make 'person-primary-profession
+		 do (sqorm-insert (imdb-make 'person-primary-profession
 					    (list (car elem) profession)))))
 	 (when known
 	   (loop for k in (split-string known ",")
-		 do (imdb-insert (imdb-make 'person-known-for
+		 do (sqorm-insert (imdb-make 'person-known-for
 					    (list (car elem) k)))))))))
 
   (imdb-read-simple 'title "title.akas")
@@ -276,10 +276,10 @@ This will take some hours and use 10GB of disk space."
 	   (writers (caddr elem)))
        (when directors
 	 (dolist (mid (split-string directors ","))
-	   (imdb-insert (imdb-make 'crew (list (car elem) mid "director")))))
+	   (sqorm-insert (imdb-make 'crew (list (car elem) mid "director")))))
        (when writers
 	 (dolist (mid (split-string writers ","))
-	   (imdb-insert (imdb-make 'crew (list (car elem) mid "writer"))))))))
+	   (sqorm-insert (imdb-make 'crew (list (car elem) mid "writer"))))))))
 
   (imdb-read-simple 'episode "title.episode")
   (imdb-read-simple 'rating "title.ratings")
@@ -288,35 +288,19 @@ This will take some hours and use 10GB of disk space."
    '(principal principal-character) "title.principals"
    (lambda (elem)
      (let* ((object (imdb-make 'principal elem)))
-       (imdb-insert object)
+       (sqorm-insert object)
        (when (car (last elem))
 	 (with-temp-buffer
 	   (insert (car (last elem)))
 	   (goto-char (point-min))
 	   (loop for character across (json-read)
-		 do (imdb-insert (imdb-make 'principal-character
+		 do (sqorm-insert (imdb-make 'principal-character
 					    (list (getf object :mid)
 						  (getf object :pid)
 						  character))))))))))
 
 (defun imdb-make (table values)
-  (nconc (list :_type table)
-	 (loop for column in (cdr (assq table imdb-tables))
-	       for value in values
-	       for type = (cadr column)
-	       append (list (intern (format ":%s" (car column)) obarray)
-			    (cond
-			     ((and value
-				   (or (eq type 'integer)
-				       (eq type 'number)
-				       (eq type 'float)))
-			      (string-to-number value))
-			     ((eq type 'bool)
-			      (if (equal value "0")
-				  "N"
-				"Y"))
-			     (t
-			      value))))))
+  (sqorm-make table values imdb-tables))
 
 (defvar imdb-mode-map
   (let ((map (make-keymap)))
@@ -1534,8 +1518,8 @@ This will take some hours and use 10GB of disk space."
 		 (* (/ (* lines 1.0) total) 100)))
       (let ((name (getf (car (sqorm-select 'person :pid (getf pid :pid)))
 			:primary-name)))
-	(imdb-insert (imdb-make 'person-search
-				(list name (getf pid :pid)))))))
+	(sqorm-insert (imdb-make 'person-search
+				 (list name (getf pid :pid)))))))
   (sqlite3-commit imdb-db)
 
   (ignore-errors
@@ -1551,9 +1535,9 @@ This will take some hours and use 10GB of disk space."
       (when (zerop (% (incf lines) 1000))
 	(message "Read %d lines (%.1f%%)" lines
 		 (* (/ (* lines 1.0) total) 100)))
-      (imdb-insert (imdb-make 'movie-search
-			      (list (getf film :primary-title)
-				    (getf film :mid))))))
+      (sqorm-insert (imdb-make 'movie-search
+			       (list (getf film :primary-title)
+				     (getf film :mid))))))
   (sqlite3-commit imdb-db))
 
 (defun imdb-choose-completion (&optional event)

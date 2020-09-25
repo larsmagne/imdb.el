@@ -124,6 +124,9 @@
 	  (kill-buffer (current-buffer)))))))
 
 (defun imdb-get-image-from-json (images)
+  ;; This used to be much more complicated, but now it's just the
+  ;; first image in the list.  But retain the loop just because
+  ;; that'll change.
   (loop for image across images
 	return (cdr (assq 'url (cdr (assq 'node image))))))
 

@@ -123,25 +123,9 @@
 	      (buffer-substring (point) (point-max)))
 	  (kill-buffer (current-buffer)))))))
 
-(defun imdb-get-image-from-json (json)
-  (let* ((images
-	  (cdr (assq 'allImages
-		     (cadr (assq 'galleries (assq 'mediaviewer json))))))
-	 (aax
-	  (cdr
-	   (assq 'aaxUrl
-		 (cdr
-		  (assq 'interstitialModel
-			(cadr (assq 'galleries
-				    (assq 'mediaviewer json))))))))
-	 ;; The default (and most "important") poster is named in a
-	 ;; string in the "aax" element.  *sigh*
-	 (initial (and aax
-		       (string-match "mediaviewer%2F\\([^%]+\\)" aax)
-		       (match-string 1 aax))))
-    (loop for image across images
-	  when (equal (cdr (assq 'id image)) initial)
-	  return (cdr (assq 'src image)))))
+(defun imdb-get-image-from-json (images)
+  (loop for image across images
+	return (cdr (assq 'url (cdr (assq 'node image))))))
 
 (defun imdb-get-image-json (url)
   (with-current-buffer (imdb-url-retrieve-synchronously url)
@@ -155,16 +139,10 @@
 ;; Javascript array (which isn't valid JSON) inside some more JS.
 ;; This will probably stop working when IMDB change...  whatever.
 (defun imdb-extract-image-json ()
+  (current-buffer)
   (when (and (search-forward "\n\n" nil t)
-	     (search-forward "window.IMDbMediaViewerInitialState = " nil t))
-    (delete-region (point-min) (point))
-    (end-of-line)
-    (search-backward "}")
-    (forward-char 1)
-    (delete-region (point) (point-max))
-    (goto-char (point-min))
-    (when (re-search-forward "'mediaviewer'" nil t)
-      (replace-match "\"mediaviewer\"" t t))
+	     (search-forward "[{\"position\":"))
+    (delete-region (point-min) (match-beginning 0))
     (goto-char (point-min))
     (json-read)))
 

@@ -146,7 +146,7 @@
     ;; This used to be much more complicated, but now it's just the
     ;; first image in the list.  But retain the loop just because
     ;; that'll change.
-    (loop for image across images
+    (loop for image across json
 	  return (cdr (assq 'url (cdr (assq 'node image)))))))
 
 (defun imdb-get-image-json (url)

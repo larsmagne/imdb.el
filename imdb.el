@@ -25,7 +25,7 @@
 
 ;;; Code:
 
-(require 'cl)
+(require 'cl-lib)
 (require 'url)
 (require 'dom)
 (require 'json)
@@ -64,26 +64,26 @@
 		       (match-string 1)))))
       (prog1
 	  (when (search-forward "\n\n" nil t)
-	    (loop with dom = (libxml-parse-html-region (point) (point-max))
-		  for image in (dom-by-tag dom 'img)
-		  for src = (dom-attr image 'src)
-		  when (and src (string-match "_AL_" src))
-		  return
-		  (if image-only
-		      (imdb-get-image
-		       (shr-expand-url
-			(dom-attr (dom-parent dom image) 'href)
-			"https://www.imdb.com/"))
-		    (if just-image
-			(imdb-get-image-data src)
-		      (list (imdb-get-image-string src)
-			    country
-			    (loop for link in (dom-by-tag dom 'a)
-				  for href = (dom-attr link 'href)
-				  when (and href
-					    (string-match "ref_=tt_ov_dr$"
-							  href))
-				  return (dom-texts link)))))))
+	    (cl-loop with dom = (libxml-parse-html-region (point) (point-max))
+		     for image in (dom-by-tag dom 'img)
+		     for src = (dom-attr image 'src)
+		     when (and src (string-match "_AL_" src))
+		     return
+		     (if image-only
+			 (imdb-get-image
+			  (shr-expand-url
+			   (dom-attr (dom-parent dom image) 'href)
+			   "https://www.imdb.com/"))
+		       (if just-image
+			   (imdb-get-image-data src)
+			 (list (imdb-get-image-string src)
+			       country
+			       (cl-loop for link in (dom-by-tag dom 'a)
+					for href = (dom-attr link 'href)
+					when (and href
+						  (string-match "ref_=tt_ov_dr$"
+								href))
+					return (dom-texts link)))))))
 	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-string (url)
@@ -140,14 +140,14 @@
 	     (initial (and aax
 			   (string-match "mediaviewer%2F\\([^%]+\\)" aax)
 			   (match-string 1 aax))))
-	(loop for image across images
-	      when (equal (cdr (assq 'id image)) initial)
-	      return (cdr (assq 'src image))))
+	(cl-loop for image across images
+		 when (equal (cdr (assq 'id image)) initial)
+		 return (cdr (assq 'src image))))
     ;; This used to be much more complicated, but now it's just the
     ;; first image in the list.  But retain the loop just because
     ;; that'll change.
-    (loop for image across json
-	  return (cdr (assq 'url (cdr (assq 'node image)))))))
+    (cl-loop for image across json
+	     return (cdr (assq 'url (cdr (assq 'node image)))))))
 
 (defun imdb-get-image-json (url)
   (with-current-buffer (imdb-url-retrieve-synchronously url)
@@ -178,38 +178,38 @@
     (json-read)))
 
 (defun imdb-query-full (title)
-  (loop for result in (imdb-extract-data
-		       (imdb-get-data title))
-	when (string-match
-	      " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)"
-	      result)
-	collect (list :year (match-string 1 result)
-		      :director (match-string 4 result)
-		      :country (match-string 2 result)
-		      :title (match-string 5 result)
-		      :id (match-string 3 result))))
+  (cl-loop for result in (imdb-extract-data
+			  (imdb-get-data title))
+	   when (string-match
+		 " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)"
+		 result)
+	   collect (list :year (match-string 1 result)
+			 :director (match-string 4 result)
+			 :country (match-string 2 result)
+			 :title (match-string 5 result)
+			 :id (match-string 3 result))))
 
 (defun imdb-extract-data (dom)
-  (loop for i from 0
-	for elem in (dom-by-class dom "findResult")
-	for links = (dom-by-tag elem 'a)
-	for id = (let ((href (dom-attr (car links) 'href)))
-		   (when (string-match "/title/\\([^/]+\\)" href)
-		     (match-string 1 href)))
-	while (< i 10)
-	for data = (imdb-get-image-and-country id)
-	for year = (let ((text (dom-texts elem)))
-		     (when (string-match "(\\([0-9][0-9][0-9][0-9]\\))" text)
-		       (match-string 1 text)))
-	collect (format
-		 "%s%s, %s, %s, %s, %s"
-		 (or (car data) "")
-		 year
-		 (cadr data)
-		 id
-		 (or (caddr data) "")
-		 (dom-text (cadr links))
-		 "")))
+  (cl-loop for i from 0
+	   for elem in (dom-by-class dom "findResult")
+	   for links = (dom-by-tag elem 'a)
+	   for id = (let ((href (dom-attr (car links) 'href)))
+		      (when (string-match "/title/\\([^/]+\\)" href)
+			(match-string 1 href)))
+	   while (< i 10)
+	   for data = (imdb-get-image-and-country id)
+	   for year = (let ((text (dom-texts elem)))
+			(when (string-match "(\\([0-9][0-9][0-9][0-9]\\))" text)
+			  (match-string 1 text)))
+	   collect (format
+		    "%s%s, %s, %s, %s, %s"
+		    (or (car data) "")
+		    year
+		    (cadr data)
+		    id
+		    (or (caddr data) "")
+		    (dom-text (cadr links))
+		    "")))
 
 (defun imdb-query (title)
   "Query IMDB for TITLE, and then prompt the user for the right match."

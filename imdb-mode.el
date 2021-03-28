@@ -1375,7 +1375,7 @@ This will take some hours and use 10GB of disk space."
 	(completion-list-mode-map imdb-completion-list-mode-map))
     (when (buffer-live-p "*Completions*")
       (kill-buffer "*Completions*"))
-    (with-displayed-buffer-window
+    (with-current-buffer-window
      "*Completions*"
      ;; This is a copy of `display-buffer-fallback-action'
      ;; where `display-buffer-use-some-window' is replaced

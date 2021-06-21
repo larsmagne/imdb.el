@@ -54,37 +54,38 @@
       (kill-buffer (current-buffer)))))
 
 (defun imdb-get-image-and-country (id &optional image-only just-image)
-  (with-current-buffer (imdb-url-retrieve-synchronously
-			(format "https://www.imdb.com/title/%s/" id))
-    (url-store-in-cache)
-    (goto-char (point-min))
-    (let ((country (save-excursion
-		     (when (re-search-forward
-			    "country_of_origin=\\([a-z]+\\)" nil t)
-		       (match-string 1)))))
-      (prog1
-	  (when (search-forward "\n\n" nil t)
-	    (cl-loop with dom = (libxml-parse-html-region (point) (point-max))
-		     for image in (dom-by-tag dom 'img)
-		     for src = (dom-attr image 'src)
-		     when (and src (string-match "_AL_" src))
-		     return
-		     (if image-only
-			 (imdb-get-image
-			  (shr-expand-url
-			   (dom-attr (dom-parent dom image) 'href)
-			   "https://www.imdb.com/"))
-		       (if just-image
-			   (imdb-get-image-data src)
-			 (list (imdb-get-image-string src)
-			       country
-			       (cl-loop for link in (dom-by-tag dom 'a)
-					for href = (dom-attr link 'href)
-					when (and href
-						  (string-match "ref_=tt_ov_dr$"
-								href))
-					return (dom-texts link)))))))
-	(kill-buffer (current-buffer))))))
+  (let ((url-request-extra-headers
+	 '(("User-Agent" . "Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20100101 Firefox/10.0"))))
+    (with-current-buffer (imdb-url-retrieve-synchronously
+			  (format "https://www.imdb.com/title/%s/" id))
+      (url-store-in-cache)
+      (goto-char (point-min))
+      (let ((country (save-excursion
+		       (when (re-search-forward
+			      "country_of_origin=\\([a-z]+\\)" nil t)
+			 (match-string 1)))))
+	(prog1
+	    (when (search-forward "\n\n" nil t)
+	      (let* ((dom (libxml-parse-html-region (point) (point-max)))
+		     (image (dom-by-tag (dom-by-class dom "ipc-poster") 'img))
+		     (src (dom-attr image 'src)))
+		(when src
+		  (if image-only
+		      (imdb-get-image
+		       (shr-expand-url
+			(dom-attr (dom-parent dom image) 'href)
+			"https://www.imdb.com/"))
+		    (if just-image
+			(imdb-get-image-data src)
+		      (list (imdb-get-image-string src)
+			    country
+			    (cl-loop for link in (dom-by-tag dom 'a)
+				     for href = (dom-attr link 'href)
+				     when (and href
+					       (string-match "ref_=tt_ov_dr$"
+							     href))
+				     return (dom-texts link))))))))
+	  (kill-buffer (current-buffer)))))))
 
 (defun imdb-get-image-string (url)
   (with-current-buffer (imdb-url-retrieve-synchronously url)

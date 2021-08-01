@@ -54,38 +54,38 @@
       (kill-buffer (current-buffer)))))
 
 (defun imdb-get-image-and-country (id &optional image-only just-image)
-  (let ((url-request-extra-headers
-	 '(("User-Agent" . "Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20100101 Firefox/10.0"))))
-    (with-current-buffer (imdb-url-retrieve-synchronously
-			  (format "https://www.imdb.com/title/%s/" id))
-      (url-store-in-cache)
-      (goto-char (point-min))
-      (let ((country (save-excursion
-		       (when (re-search-forward
-			      "country_of_origin=\\([a-z]+\\)" nil t)
-			 (match-string 1)))))
-	(prog1
-	    (when (search-forward "\n\n" nil t)
-	      (let* ((dom (libxml-parse-html-region (point) (point-max)))
-		     (image (dom-by-tag (dom-by-class dom "ipc-poster") 'img))
-		     (src (dom-attr image 'src)))
-		(when src
-		  (if image-only
-		      (imdb-get-image
-		       (shr-expand-url
-			(dom-attr (dom-parent dom image) 'href)
-			"https://www.imdb.com/"))
-		    (if just-image
-			(imdb-get-image-data src)
-		      (list (imdb-get-image-string src)
-			    country
-			    (cl-loop for link in (dom-by-tag dom 'a)
-				     for href = (dom-attr link 'href)
-				     when (and href
-					       (string-match "ref_=tt_ov_dr$"
-							     href))
-				     return (dom-texts link))))))))
-	  (kill-buffer (current-buffer)))))))
+  (with-current-buffer (imdb-url-retrieve-synchronously
+			(format "https://www.imdb.com/title/%s/" id))
+    (url-store-in-cache)
+    (goto-char (point-min))
+    (let ((country (save-excursion
+		     (when (re-search-forward
+			    "country_of_origin=\\([a-zA-Z]+\\)" nil t)
+		       (match-string 1)))))
+      (prog1
+	  (when (search-forward "\n\n" nil t)
+	    (cl-loop with dom = (libxml-parse-html-region (point) (point-max))
+		     for image in (dom-by-tag dom 'meta)
+		     for src = (dom-attr image 'content)
+		     when (and src
+			       (equal (dom-attr image 'property)
+				      "og:image"))
+		     return
+		     (if image-only
+			 (imdb-get-image src)
+		       (if just-image
+			   (imdb-get-image-data src)
+			 (list (imdb-get-image-string src)
+			       country
+			       ;; Director.
+			       (cl-loop for link in (dom-by-tag dom 'li)
+					for span = (dom-by-tag link 'span)
+					when (and span
+						  (equal (dom-text span)
+							 "Director"))
+					return (dom-texts
+						(dom-by-tag link 'a))))))))
+	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-string (url)
   (with-current-buffer (imdb-url-retrieve-synchronously url)
@@ -96,7 +96,8 @@
 	  (let ((image
 		 (ignore-errors
 		   (create-image
-		    (buffer-substring (point) (point-max)) nil t))))
+		    (buffer-substring (point) (point-max)) nil t
+		    :max-height 200))))
 	    (when image
 	      (propertize
 	       " "
@@ -216,8 +217,7 @@
   "Query IMDB for TITLE, and then prompt the user for the right match."
   (interactive "sTitle: ")
   (let* ((max-mini-window-height 0.5)
-	 (data (imdb-extract-data
-		(imdb-get-data title)))
+	 (data (imdb-extract-data (imdb-get-data title)))
 	 (result (completing-read "Movie: " (cdr data) nil nil
 				  (cons (car data) 0))))
     (when (string-match " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)," result)

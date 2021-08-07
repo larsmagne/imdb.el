@@ -994,12 +994,12 @@ This will take some hours and use 10GB of disk space."
 	 (url-store-in-cache)
 	 (imdb-update-film-image-1
 	  (cl-loop with dom = (libxml-parse-html-region (point) (point-max))
-		   for image in (dom-by-tag dom 'img)
-		   for src = (dom-attr image 'src)
-		   when (and src (string-match "_AL_" src))
-		   return (shr-expand-url
-			   (dom-attr (dom-parent dom image) 'href)
-			   "https://www.imdb.com/"))
+		   for image in (dom-by-tag dom 'meta)
+		   for src = (dom-attr image 'content)
+		   when (and src
+			     (equal (dom-attr image 'property)
+				    "og:image"))
+		   return src)
 	  buffer))
        (kill-buffer (current-buffer))))))
 
@@ -1017,33 +1017,22 @@ This will take some hours and use 10GB of disk space."
       (imdb-placehold-film buffer)
     (imdb-url-retrieve
      url
-     (lambda (_)
+     (lambda (status)
        (url-store-in-cache)
        (goto-char (point-min))
-       (imdb-update-film-image-2 (imdb-extract-image-json) buffer)
+       (when (and (search-forward "\n\n" nil t)
+		  (not (getf status :error)))
+	 (let ((data (buffer-substring (point) (point-max))))
+	   (when (buffer-live-p buffer)
+	     (with-current-buffer buffer
+	       (save-excursion
+		 (goto-char (point-min))
+		 (let ((inhibit-read-only t))
+		   (delete-region (point) (line-end-position))
+		   (insert-image
+		    (create-image data (imdb-mode--image-type)
+				  t :height 400))))))))
        (kill-buffer (current-buffer))))))
-
-(defun imdb-update-film-image-2 (json buffer)
-  (let ((src (imdb-get-image-from-json json)))
-    (if (not src)
-	(imdb-placehold-film buffer)
-      (imdb-url-retrieve
-       src
-       (lambda (status)
-	 (goto-char (point-min))
-	 (when (and (search-forward "\n\n" nil t)
-		    (not (getf status :error)))
-	   (url-store-in-cache)
-	   (let ((data (buffer-substring (point) (point-max))))
-	     (when (buffer-live-p buffer)
-	       (with-current-buffer buffer
-		 (save-excursion
-		   (goto-char (point-min))
-		   (let ((inhibit-read-only t))
-		     (delete-region (point) (line-end-position))
-		     (insert-image
-		      (create-image data (imdb-mode--image-type) t :height 400))))))))
-	 (kill-buffer (current-buffer)))))))
 
 (defun imdb-insert-placeholder (width height &optional color)
   (let* ((scale (image-compute-scaling-factor image-scaling-factor))

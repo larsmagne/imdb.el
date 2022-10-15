@@ -193,16 +193,14 @@
 
 (defun imdb-extract-data (dom)
   (cl-loop for i from 0
-	   for elem in (dom-by-class dom "findResult")
+	   for elem in (dom-by-class dom "ipc-metadata-list-summary-item__c\\'")
 	   for links = (dom-by-tag elem 'a)
 	   for id = (let ((href (dom-attr (car links) 'href)))
 		      (when (string-match "/title/\\([^/]+\\)" href)
 			(match-string 1 href)))
 	   while (< i 10)
 	   for data = (imdb-get-image-and-country id)
-	   for year = (let ((text (dom-texts elem)))
-			(when (string-match "(\\([0-9][0-9][0-9][0-9]\\))" text)
-			  (match-string 1 text)))
+	   for year = (dom-text (dom-by-class elem "ipc-metadata-list-summary-item__li"))
 	   collect (format
 		    "%s%s, %s, %s, %s, %s"
 		    (or (car data) "")
@@ -210,7 +208,7 @@
 		    (cadr data)
 		    id
 		    (or (caddr data) "")
-		    (dom-text (cadr links))
+		    (dom-texts elem)
 		    "")))
 
 (defun imdb-query (title)

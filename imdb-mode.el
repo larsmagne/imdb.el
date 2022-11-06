@@ -714,7 +714,16 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-mode-open-imdb ()
   "Open the item under point in a web browser."
   (interactive)
-  (browse-url-default-browser (imdb-mode-get-url)))
+  (browse-url-default-browser (imdb-mode-get-url))
+  (when-let ((film (and (eq imdb-mode-mode 'film)
+			(getf (car (sqorm-select 'movie :mid imdb-mode-search))
+			      :primary-title))))
+    (dolist (site '("rottentomatoes.com" "wikipedia.org"))
+      (funcall browse-url-secondary-browser-function
+	       (concat "https://www.google.com/search?q=site%3A"
+		       site "+"
+		       (string-replace " " "+" film))))))
+
 
 (defun imdb-mode-load-all-images ()
   "Expand all the actor images in the current buffer."

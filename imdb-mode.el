@@ -1125,9 +1125,16 @@ This will take some hours and use 10GB of disk space."
 		  (not (getf status :error)))
 	 (url-store-in-cache)
 	 (let* ((dom (libxml-parse-html-region (point) (point-max)))
-		(img (dom-attr (dom-by-tag (dom-by-id dom "img_primary")
-					   'img)
-			       'src)))
+		(img (loop for elem in (dom-by-tag dom 'script)
+			   for image =
+			   (and (equal (dom-attr elem 'type)
+				       "application/ld+json")
+				(let ((json (json-parse-string
+					     (car (dom-children elem)))))
+				  (and json
+				       (gethash "image" json))))
+			   when image
+			   return image)))
 	   (if img
 	       (imdb-url-retrieve
 		img 

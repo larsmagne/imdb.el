@@ -79,7 +79,7 @@
 			       country
 			       ;; Director.
 			       (cl-loop for link in (dom-by-tag dom 'li)
-					for span = (dom-by-tag link 'button)
+					for span = (dom-by-tag link 'span)
 					when (and span
 						  (equal (dom-text span)
 							 "Director"))

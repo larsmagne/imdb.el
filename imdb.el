@@ -191,14 +191,14 @@
 			 :title (match-string 5 result)
 			 :id (match-string 3 result))))
 
-(defun imdb-extract-data (dom)
+(defun imdb-extract-data (dom &optional max-results)
   (cl-loop for i from 0
 	   for elem in (dom-by-class dom "ipc-metadata-list-summary-item__c\\'")
 	   for links = (dom-by-tag elem 'a)
 	   for id = (let ((href (dom-attr (car links) 'href)))
 		      (when (string-match "/title/\\([^/]+\\)" href)
 			(match-string 1 href)))
-	   while (< i 10)
+	   while (< i (or max-results 10))
 	   for data = (imdb-get-image-and-country id)
 	   for year = (dom-text (dom-by-class elem "ipc-metadata-list-summary-item__li"))
 	   collect (format
@@ -211,16 +211,19 @@
 		    (dom-texts elem)
 		    "")))
 
-(defun imdb-query (title)
+(defun imdb-query (title &optional max-results)
   "Query IMDB for TITLE, and then prompt the user for the right match."
   (interactive "sTitle: ")
   (let* ((max-mini-window-height 0.5)
-	 (data (imdb-extract-data (imdb-get-data title)))
-	 (result (if data
-		     (completing-read "Movie: " (cdr data) nil nil
-				      (cons (car data) 0))
-		   (completing-read "Movie: " nil))))
-    (when (string-match " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)," result)
+	 (data (imdb-extract-data (imdb-get-data title) max-results))
+	 (result (if (and max-results (= max-results 1))
+		     (car data)
+		   (if data
+		       (completing-read "Movie: " (cdr data) nil nil
+					(cons (car data) 0))
+		     (completing-read "Movie: " nil)))))
+    (when (and data
+	       (string-match " *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\), *\\([^,]+\\)," result))
       (list :year (match-string 1 result)
 	    :country (match-string 2 result)
 	    :id (match-string 3 result)

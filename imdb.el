@@ -64,27 +64,33 @@
 		       (match-string 1)))))
       (prog1
 	  (when (search-forward "\n\n" nil t)
-	    (cl-loop with dom = (libxml-parse-html-region (point) (point-max))
-		     for image in (dom-by-tag dom 'meta)
-		     for src = (dom-attr image 'content)
-		     when (and src
-			       (equal (dom-attr image 'property)
-				      "og:image"))
-		     return
-		     (if image-only
-			 (imdb-get-image src)
-		       (if just-image
-			   (imdb-get-image-data src)
-			 (list (imdb-get-image-string src)
-			       country
-			       ;; Director.
-			       (cl-loop for link in (dom-by-tag dom 'li)
-					for span = (dom-by-tag link 'span)
-					when (and span
-						  (equal (dom-text span)
-							 "Director"))
-					return (dom-texts
-						(dom-by-tag link 'a))))))))
+	    (cl-loop
+	     with dom = (libxml-parse-html-region (point) (point-max))
+	     for image in (dom-by-tag dom 'meta)
+	     for src = (dom-attr image 'content)
+	     when (and src
+		       (equal (dom-attr image 'property)
+			      "og:image"))
+	     return
+	     (if image-only
+		 (imdb-get-image src)
+	       (if just-image
+		   (imdb-get-image-data src)
+		 (list (imdb-get-image-string src)
+		       country
+		       ;; Director.
+		       (string-join
+			(cl-loop for link in (dom-by-tag dom 'li)
+				 for span = (dom-by-tag link 'span)
+				 when (and span
+					   (or (equal (dom-text span)
+						      "Director")
+					       (equal (dom-text span)
+						      "Directors")))
+				 return
+				 (cl-loop for dir in (dom-by-tag link 'a)
+					  collect (dom-text dir)))
+			" + "))))))
 	(kill-buffer (current-buffer))))))
 
 (defun imdb-get-image-string (url)

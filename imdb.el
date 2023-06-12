@@ -214,8 +214,7 @@
 		    (cadr data)
 		    id
 		    (or (caddr data) "")
-		    (dom-texts elem)
-		    "")))
+		    (dom-texts elem))))
 
 (defun imdb-query (title &optional max-results)
   "Query IMDB for TITLE, and then prompt the user for the right match."

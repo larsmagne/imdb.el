@@ -93,16 +93,6 @@
 			" + "))))))
 	(kill-buffer (current-buffer))))))
 
-(defun imdb--get-director (dom)
-  (cl-loop for link in (dom-by-tag dom 'li)
-	   for span = (or (dom-by-tag link 'button)
-			  (dom-by-tag link 'span))
-	   when (and span
-		     (equal (dom-text span)
-			    "Director"))
-	   return (dom-texts
-		   (dom-by-tag link 'a))))
-
 (defun imdb-get-image-string (url)
   (with-current-buffer (imdb-url-retrieve-synchronously url)
     (url-store-in-cache)

@@ -297,8 +297,8 @@ This will take some hours and use 10GB of disk space."
 	   (goto-char (point-min))
 	   (cl-loop for character across (json-read)
 		    do (sqorm-insert (imdb-make 'principal-character
-						(list (getf object :mid)
-						      (getf object :pid)
+						(list (cl-getf object :mid)
+						      (cl-getf object :pid)
 						      character))))))))))
 
 (defun imdb-make (table values)
@@ -371,13 +371,13 @@ This will take some hours and use 10GB of disk space."
 	    mid imdb-mode-search))
     (let ((person (car (sqorm-select 'person :pid pid)))
 	  (film (car (sqorm-select 'movie :mid mid))))
-      (if (and (getf film :start-year)
-	       (getf person :birth-year))
+      (if (and (cl-getf film :start-year)
+	       (cl-getf person :birth-year))
 	  (message "%s was %s years old when %s was made"
-		   (getf person :primary-name)
-		   (- (getf film :start-year)
-		      (getf person :birth-year))
-		   (getf film :primary-title))
+		   (cl-getf person :primary-name)
+		   (- (cl-getf film :start-year)
+		      (cl-getf person :birth-year))
+		   (cl-getf film :primary-title))
 	(message "Insufficient data")))))
 
 (defun imdb-mode-display-intersection ()
@@ -394,8 +394,8 @@ This will take some hours and use 10GB of disk space."
     (switch-to-buffer (format "*imdb %s*"
 			      (mapconcat
 			       (lambda (pid)
-				 (getf (car (sqorm-select 'person :pid pid))
-				       :primary-name))
+				 (cl-getf (car (sqorm-select 'person :pid pid))
+					  :primary-name))
 			       pids
 			       ",")))
     (let ((inhibit-read-only t))
@@ -424,20 +424,20 @@ This will take some hours and use 10GB of disk space."
 	;; concerned have appeared in).
 	(films
 	 (cl-loop for film in (car all)
-		  when (every
+		  when (cl-every
 			#'identity
 			(cl-loop for other in (cdr all)
 				 collect
 				 (cl-member
 				  film other
 				  :test (lambda (e1 e2)
-					  (equal (getf e1 :mid)
-						 (getf e2 :mid))))))
+					  (equal (cl-getf e1 :mid)
+						 (cl-getf e2 :mid))))))
 		  collect film)))
     ;; Remove duplicates.
     (setq films
 	  (cl-remove-duplicates films
-				:key (lambda (e) (getf e :mid))
+				:key (lambda (e) (cl-getf e :mid))
 				:test #'equal))
     (erase-buffer)
     (imdb-kill)
@@ -451,10 +451,12 @@ This will take some hours and use 10GB of disk space."
     (dolist (pid pids)
       (let ((person (car (sqorm-select 'person :pid pid))))
 	(insert
-	 (imdb-face (getf person :primary-name) "#f0f0f0"))
-	(when (getf person :birth-year)
+	 (imdb-face (cl-getf person :primary-name) "#f0f0f0"))
+	(when (cl-getf person :birth-year)
 	  (insert
-	   (imdb-face (format " (%s)" (getf person :birth-year)) "#a0a0a0"))))
+	   (imdb-face (format " (%s)"
+			      (cl-getf person :birth-year))
+		      "#a0a0a0"))))
       (insert " "))
     (insert "\n\n")
     (setq imdb-mode-mode 'intersection
@@ -462,7 +464,7 @@ This will take some hours and use 10GB of disk space."
     (setq films (cl-sort
 		 (reverse films) '<
 		 :key (lambda (e)
-			(or (getf e :start-year) 1.0e+INF))))
+			(or (cl-getf e :start-year) 1.0e+INF))))
     (setq films (imdb-mode-filter films))
     (dolist (film films)
       (imdb-mode-person-film film (car pids)))
@@ -567,30 +569,30 @@ This will take some hours and use 10GB of disk space."
       (error "No films match %S" film))
     (dolist (film (cl-sort films '<
 			   :key (lambda (e)
-				  (or (getf e :start-year)
+				  (or (cl-getf e :start-year)
 				      most-positive-fixnum))))
       (insert
        (propertize
 	(format "%s %s%s%s%s\n"
-		(imdb-face (getf film :start-year))
+		(imdb-face (cl-getf film :start-year))
 		(propertize " " 'display '(space :align-to 6))
-		(imdb-face (getf film :primary-title))
-		(if (equal (getf film :type) "movie")
+		(imdb-face (cl-getf film :primary-title))
+		(if (equal (cl-getf film :type) "movie")
 		    ""
 		  (imdb-face (format " (%s)"
-				     (imdb-display-type (getf film :type)))
+				     (imdb-display-type (cl-getf film :type)))
 			     "#80a080"))
 		(let ((directors
 		       (sqorm-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
-					   (getf film :mid))))
+					   (cl-getf film :mid))))
 		  (if (not directors)
 		      ""
 		    (imdb-face
 		     (concat " " (mapconcat (lambda (e)
-					      (getf e :primary-name))
+					      (cl-getf e :primary-name))
 					    directors ", "))
 		     "#80a080"))))
-	'id (getf film :mid))))
+	'id (cl-getf film :mid))))
     (goto-char (point-min))))
 
 (defun imdb-query-user (prompt)
@@ -641,28 +643,30 @@ This will take some hours and use 10GB of disk space."
       (error "No people match %S" person))
     (dolist (person (cl-sort people 'string<
 			     :key (lambda (e)
-				    (getf e :primary-anem))))
+				    (cl-getf e :primary-anem))))
       (insert
        (propertize
 	(format
 	 "%s%s%s\n"
-	 (imdb-face (getf person :primary-name))
-	 (if (not (getf person :birth-year))
+	 (imdb-face (cl-getf person :primary-name))
+	 (if (not (cl-getf person :birth-year))
 	     ""
-	   (imdb-face (format " (%s)" (getf person :birth-year)) "#a0a0a0"))
-	 (let ((known (sqorm-select 'person-known-for :pid (getf person :pid))))
+	   (imdb-face (format " (%s)" (cl-getf person :birth-year)) "#a0a0a0"))
+	 (let ((known (sqorm-select 'person-known-for
+				    :pid (cl-getf person :pid))))
 	   (if (not known)
 	       ""
 	     (imdb-face
 	      (format " (%s)"
 		      (mapconcat
 		       (lambda (e)
-			 (getf (car (sqorm-select 'movie :mid (getf e :mid)))
-			       :primary-title))
+			 (cl-getf (car (sqorm-select 'movie
+						     :mid (cl-getf e :mid)))
+				  :primary-title))
 		       known
 		       ", "))
 	      "#a0a0a0"))))
-	'id (getf person :pid))))
+	'id (cl-getf person :pid))))
     (goto-char (point-min))))
 
 (defun imdb-mode-filter (films)
@@ -670,9 +674,9 @@ This will take some hours and use 10GB of disk space."
 	 (if (not imdb-mode-filter-insignificant)
 	     films
 	   (cl-loop for film in films
-		    when (and (getf film :start-year)
-			      (equal (getf film :type) "movie")
-			      (not (member (getf film :category)
+		    when (and (cl-getf film :start-year)
+			      (equal (cl-getf film :type) "movie")
+			      (not (member (cl-getf film :category)
 					   '("thanks" "miscellaneous"
 					     "camera_department"
 					     "self" "archive_footage"
@@ -682,10 +686,10 @@ This will take some hours and use 10GB of disk space."
 	films
       (cl-loop for film in films
 	       when (or (and (eq imdb-mode-filter-job 'acting)
-			     (member (getf film :category)
+			     (member (cl-getf film :category)
 				     '("actor" "actress")))
 			(and (eq imdb-mode-filter-job 'directing)
-			     (member (getf film :category)
+			     (member (cl-getf film :category)
 				     '("director"))))
 	       collect film))))
 
@@ -705,8 +709,8 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-mode-show-person (id)
   (switch-to-buffer (format "*imdb %s*"
-			    (getf (car (sqorm-select 'person :pid id))
-				  :primary-name)))
+			    (cl-getf (car (sqorm-select 'person :pid id))
+				     :primary-name)))
   (let ((inhibit-read-only t))
     (imdb-mode)
     (imdb-mode-display-person id)))
@@ -717,9 +721,9 @@ This will take some hours and use 10GB of disk space."
   (browse-url-default-browser (imdb-mode-get-url))
   (when all
     (when-let ((film (and (eq imdb-mode-mode 'film)
-			  (getf (car (sqorm-select 'movie
-						   :mid imdb-mode-search))
-				:primary-title))))
+			  (cl-getf (car (sqorm-select 'movie
+						      :mid imdb-mode-search))
+				   :primary-title))))
       (dolist (site '("rottentomatoes.com" "wikipedia.org"))
 	(funcall browse-url-secondary-browser-function
 		 (concat "https://www.google.com/search?q=site%3A"
@@ -778,8 +782,8 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-mode-show-film (id)
   (switch-to-buffer (format "*imdb %s*"
-			    (getf (car (sqorm-select 'movie :mid id))
-				  :primary-title)))
+			    (cl-getf (car (sqorm-select 'movie :mid id))
+				     :primary-title)))
   (let ((inhibit-read-only t)
 	(film (car (sqorm-select 'movie :mid id))))
     (erase-buffer)
@@ -799,44 +803,44 @@ This will take some hours and use 10GB of disk space."
 	 (concat
 	  (imdb-face "Directed by ")
 	  (imdb-face (mapconcat (lambda (e)
-				  (propertize (getf e :primary-name)
-					      'id (getf e :pid)))
+				  (propertize (cl-getf e :primary-name)
+					      'id (cl-getf e :pid)))
 				directors ", ")
 		     '(:foreground "#f0f0f0"
 				   :weight bold))))
        "\n"))
 
     
-    (when (getf film :start-year)
-      (insert (imdb-face (format "%s " (getf film :start-year)))))
+    (when (cl-getf film :start-year)
+      (insert (imdb-face (format "%s " (cl-getf film :start-year)))))
     
     (let ((rating (car (sqorm-select 'rating :mid id))))
       (when rating
 	(insert
 	 (imdb-face (format "Rating %s / %s votes"
-			    (getf rating :rating)
-			    (getf rating :votes))
+			    (cl-getf rating :rating)
+			    (cl-getf rating :votes))
 		    "#b0b0b0")))
-      (when (getf film :length)
+      (when (cl-getf film :length)
 	(when rating
 	  (insert (imdb-face " / " "#b0b0b0")))
 	(insert 
-	 (imdb-face (format "%d mins" (getf film :length)) "#b0b0b0"))))
+	 (imdb-face (format "%d mins" (cl-getf film :length)) "#b0b0b0"))))
     (insert "\n")
 
     (let ((genres (sqorm-select 'movie-genre :mid id)))
       (when genres
 	(insert 
 	 (imdb-face
-	  (mapconcat (lambda (e) (getf e :genre)) genres ", ")
+	  (mapconcat (lambda (e) (cl-getf e :genre)) genres ", ")
 	  "#b0b0b0")))
-      (when (getf film :type)
+      (when (cl-getf film :type)
 	(when genres
 	  (insert (imdb-face " ")))
 	(insert 
-	 (imdb-face (format "(%s)" (imdb-display-type (getf film :type)))
+	 (imdb-face (format "(%s)" (imdb-display-type (cl-getf film :type)))
 		    "#b0b0b0")))
-      (when (or (getf film :type)
+      (when (or (cl-getf film :type)
 		genres)
 	(insert "\n")))
 
@@ -845,7 +849,7 @@ This will take some hours and use 10GB of disk space."
     (dolist (person (cl-sort
 		     (sqorm-select 'principal :mid id) '<
 		     :key (lambda (e)
-			    (let ((job (getf e :category)))
+			    (let ((job (cl-getf e :category)))
 			      (cond
 			       ((equal job "director") 1)
 			       ((equal job "actor") 2)
@@ -856,14 +860,15 @@ This will take some hours and use 10GB of disk space."
 	       (format
 		"%s%s%s\n"
 		(imdb-face
-		 (getf (car (sqorm-select 'person :pid (getf person :pid)))
-		       :primary-name))
+		 (cl-getf (car (sqorm-select 'person
+					     :pid (cl-getf person :pid)))
+			  :primary-name))
 		(imdb-face
-		 (format " (%s)" (imdb-display-type (getf person :category)))
+		 (format " (%s)" (imdb-display-type (cl-getf person :category)))
 		 "#c0c0c0")
 		(let ((characters (sqorm-select 'principal-character
 						:mid id
-						:pid (getf person :pid))))
+						:pid (cl-getf person :pid))))
 		  (if (not characters)
 		      ""
 		    (imdb-face
@@ -871,10 +876,10 @@ This will take some hours and use 10GB of disk space."
 		      " "
 		      (mapconcat
 		       (lambda (e)
-			 (format "\"%s\"" (getf e :character)))
+			 (format "\"%s\"" (cl-getf e :character)))
 		       characters ", "))
 		     "#a0a0f0"))))
-	       'id (getf person :pid))))
+	       'id (cl-getf person :pid))))
     (goto-char (point-min))
     (forward-line 1)
     (imdb-get-actors id (current-buffer))))
@@ -891,12 +896,12 @@ This will take some hours and use 10GB of disk space."
     (insert "\n\n")
     (let ((person (car (sqorm-select 'person :pid id))))
       (insert
-       (imdb-face (getf person :primary-name) "#f0f0f0"))
-      (when (getf person :birth-year)
+       (imdb-face (cl-getf person :primary-name) "#f0f0f0"))
+      (when (cl-getf person :birth-year)
 	(insert
-	 (imdb-face (format " (%s%s)" (getf person :birth-year)
-			    (if (getf person :death-year)
-				(format "-%s" (getf person :death-year))
+	 (imdb-face (format " (%s%s)" (cl-getf person :birth-year)
+			    (if (cl-getf person :death-year)
+				(format "-%s" (cl-getf person :death-year))
 			      ""))
 		    "#a0a0a0"))))
     (when-let ((known (sqorm-select 'person-known-for :pid id)))
@@ -906,9 +911,10 @@ This will take some hours and use 10GB of disk space."
 		       (mapconcat
 			(lambda (e)
 			  (propertize
-			   (getf (car (sqorm-select 'movie :mid (getf e :mid)))
-				 :primary-title)
-			   'id (getf e :mid)))
+			   (cl-getf (car (sqorm-select 'movie
+						       :mid (cl-getf e :mid)))
+				    :primary-title)
+			   'id (cl-getf e :mid)))
 			known
 			", "))
 	       "#c0c0c0")))
@@ -920,12 +926,12 @@ This will take some hours and use 10GB of disk space."
     (dolist (film imdb-mode-extra-data)
       (unless (cl-member film films
 			 :test (lambda (e1 e2)
-				 (equal (getf e1 :mid) (getf e2 :mid))))
+				 (equal (cl-getf e1 :mid) (cl-getf e2 :mid))))
 	(push film films)))
     (setq films (cl-sort
 		 (reverse films) '<
 		 :key (lambda (e)
-			(or (getf e :start-year) 1.0e+INF))))
+			(or (cl-getf e :start-year) 1.0e+INF))))
     (setq films (imdb-mode-filter films))
     (dolist (film films)
       (imdb-mode-person-film film id))
@@ -934,41 +940,41 @@ This will take some hours and use 10GB of disk space."
     (imdb-person-update-films id)))
 
 (defun imdb-mode-person-film (film pid)
-  (unless (equal (getf film :type) "tvEpisode") 
+  (unless (equal (cl-getf film :type) "tvEpisode") 
     (insert
      (propertize
       (format "%s %s%s%s%s%s%s\n"
-	      (imdb-face (or (getf film :start-year) ""))
+	      (imdb-face (or (cl-getf film :start-year) ""))
 	      (propertize " " 'display '(space :align-to 6))
-	      (imdb-face (getf film :primary-title))
+	      (imdb-face (cl-getf film :primary-title))
 	      (cond
-	       ((equal (getf film :type) "movie")
+	       ((equal (cl-getf film :type) "movie")
 		"")
-	       ((equal (getf film :type) "tvSeries")
+	       ((equal (cl-getf film :type) "tvSeries")
 		(let ((count
 		       (car
 			(sqorm-select-where
 			 "select count(*) from movie inner join episode on movie.mid = episode.mid inner join principal_character on principal_character.mid = movie.mid where episode.movie = ? and principal_character.pid = ?"
-			 (getf film :mid)
+			 (cl-getf film :mid)
 			 pid))))
 		  (imdb-face
-		   (if (plusp (getf count :count))
+		   (if (plusp (cl-getf count :count))
 		       (format " (tv series, %s episode%s)"
-			       (getf count :count)
-			       (if (> (getf count :count) 1)
+			       (cl-getf count :count)
+			       (if (> (cl-getf count :count) 1)
 				   "s"
 				 ""))
 		     (format " (tv series)"))
 		   "#a0a0a0")))
 	       (t
 		(imdb-face (format " (%s)" (imdb-display-type
-					    (getf film :type)))
+					    (cl-getf film :type)))
 			   "#a0a0a0")))
 	      (imdb-face (format " (%s)" (imdb-display-type
-					  (getf film :category)))
+					  (cl-getf film :category)))
 			 "#c0c0c0")
 	      (let ((characters (sqorm-select 'principal-character
-					     :mid (getf film :mid)
+					     :mid (cl-getf film :mid)
 					     :pid pid)))
 		(if (not characters)
 		    ""
@@ -977,20 +983,20 @@ This will take some hours and use 10GB of disk space."
 		    " "
 		    (mapconcat
 		     (lambda (e)
-		       (format "%S" (getf e :character)))
+		       (format "%S" (cl-getf e :character)))
 		     characters ", "))
 		   "#a0a0f0")))
 	      (let ((directors
 		     (sqorm-select-where "select primary_name from person inner join crew on crew.pid = person.pid where crew.category = 'director' and crew.mid = ?"
-					(getf film :mid))))
+					(cl-getf film :mid))))
 		(if (not directors)
 		    ""
 		  (imdb-face
 		   (concat " " (mapconcat (lambda (e)
-					    (getf e :primary-name))
+					    (cl-getf e :primary-name))
 					  directors ", "))
 		   "#80a080"))))
-      'id (getf film :mid)))))
+      'id (cl-getf film :mid)))))
 
 (defun imdb-update-film-image (id)
   (let ((buffer (current-buffer)))
@@ -999,7 +1005,7 @@ This will take some hours and use 10GB of disk space."
      (lambda (status)
        (goto-char (point-min))
        (if (or (not (search-forward "\n\n" nil t))
-	       (getf status :error))
+	       (cl-getf status :error))
 	   (imdb-placehold-film buffer)
 	 (url-store-in-cache)
 	 (imdb-update-film-image-1
@@ -1031,7 +1037,7 @@ This will take some hours and use 10GB of disk space."
        (url-store-in-cache)
        (goto-char (point-min))
        (when (and (search-forward "\n\n" nil t)
-		  (not (getf status :error)))
+		  (not (cl-getf status :error)))
 	 (let ((data (buffer-substring (point) (point-max))))
 	   (when (buffer-live-p buffer)
 	     (with-current-buffer buffer
@@ -1066,7 +1072,7 @@ This will take some hours and use 10GB of disk space."
    (lambda (status)
      (goto-char (point-min))
      (when (and (search-forward "\n\n" nil t)
-		(not (getf status :error)))
+		(not (cl-getf status :error)))
        (url-store-in-cache)
        (let* ((table (dom-by-class
 		      (libxml-parse-html-region (point) (point-max))
@@ -1102,18 +1108,18 @@ This will take some hours and use 10GB of disk space."
 		     (imdb-insert-placeholder 100 150))
 		   (insert
 		    (format " %s%s\n"
-			    (imdb-face (getf person :name))
-			    (if (equal (getf person :character) "")
+			    (imdb-face (cl-getf person :name))
+			    (if (equal (cl-getf person :character) "")
 				""
 			      (imdb-face (format " \"%s\""
-						 (getf person :character))
+						 (cl-getf person :character))
 					 "#a0a0a0"))))
 		   (put-text-property start (point)
-				      'id (getf person :pid)))))))
+				      'id (cl-getf person :pid)))))))
 	 (kill-buffer (current-buffer))
 	 (when people
 	   (imdb-load-people-images
-	    (mapcar (lambda (e) (getf e :pid)) (nreverse updates))
+	    (mapcar (lambda (e) (cl-getf e :pid)) (nreverse updates))
 	    buffer 100 150 3)))))))
 
 (defun imdb-load-people-images (pids buffer width height newlines)
@@ -1123,7 +1129,7 @@ This will take some hours and use 10GB of disk space."
      (lambda (status)
        (goto-char (point-min))
        (when (and (search-forward "\n\n" nil t)
-		  (not (getf status :error)))
+		  (not (cl-getf status :error)))
 	 (url-store-in-cache)
 	 (let* ((dom (libxml-parse-html-region (point) (point-max)))
 		(img (cl-loop for elem in (dom-by-tag dom 'script)
@@ -1163,7 +1169,7 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-load-people-image (status pid buffer height newlines)
   (goto-char (point-min))
   (when (and (search-forward "\n\n" nil t)
-	     (not (getf status :error)))
+	     (not (cl-getf status :error)))
     (url-store-in-cache)
     (let ((data (buffer-substring (point) (point-max)))
 	  match)
@@ -1209,13 +1215,14 @@ This will take some hours and use 10GB of disk space."
 	       (dolist (film films)
 		 (goto-char (point-min))
 		 (forward-line 5)
-		 (unless (text-property-search-forward 'id (getf film :mid) t)
-		   (if (not (getf film :start-year))
+		 (unless (text-property-search-forward
+			  'id (cl-getf film :mid) t)
+		   (if (not (cl-getf film :start-year))
 		       (goto-char (point-max))
 		     (while (and (looking-at "[0-9]+")
 				 (let ((year (string-to-number
 					      (match-string 0))))
-				   (<= year (getf film :start-year))))
+				   (<= year (cl-getf film :start-year))))
 		       (forward-line 1)))
 		   (imdb-mode-person-film film pid)))))))))))
 
@@ -1244,8 +1251,9 @@ This will take some hours and use 10GB of disk space."
 					  'movie :mid (match-string 1 href)))))
 			  (if film
 			      (progn
-				(setf (getf film :category)
-				      (car (split-string (dom-attr elem 'id) "-")))
+				(setf (cl-getf film :category)
+				      (car (split-string (dom-attr elem 'id)
+							 "-")))
 				film)
 			    (list :mid (match-string 1 href)
 				  :primary-title (imdb-clean (dom-texts link))
@@ -1260,7 +1268,7 @@ This will take some hours and use 10GB of disk space."
 						  (imdb-clean character)))))))
 	 (setq films (cl-sort (nreverse films) '<
 			      :key (lambda (elem)
-				     (or (getf elem :year) 1.0e+INF)))))
+				     (or (cl-getf elem :year) 1.0e+INF)))))
        (funcall callback films)
        (kill-buffer (current-buffer))))))
 
@@ -1415,12 +1423,12 @@ This will take some hours and use 10GB of disk space."
 			       (format "%s*" string))))
       (cond
        ((and (= (length matches) 1)
-	     (search (downcase string)
-		     (downcase (getf (car matches) :primary-name))))
+	     (cl-search (downcase string)
+			(downcase (cl-getf (car matches) :primary-name))))
 	(cons
 	 t
-	 (propertize (getf (car matches) :primary-name)
-		     'id (getf (car matches) :pid))))
+	 (propertize (cl-getf (car matches) :primary-name)
+		     'id (cl-getf (car matches) :pid))))
        ((null matches)
 	nil)
        (t
@@ -1429,10 +1437,10 @@ This will take some hours and use 10GB of disk space."
 		(downcase string)
 		(cl-loop for e in matches
 			 collect (substring    
-				  (downcase (getf e :primary-name))
-				  (search
+				  (downcase (cl-getf e :primary-name))
+				  (cl-search
 				   (downcase string)
-				   (downcase (getf e :primary-name))))))))
+				   (downcase (cl-getf e :primary-name))))))))
 	  (if (eq try t)
 	      (downcase string)
 	    try))))))
@@ -1443,14 +1451,14 @@ This will take some hours and use 10GB of disk space."
      (imdb-sort-people-completions
       (cl-loop for e in (sqorm-find 'person-search :person-search '=
 				    (format "%s*" string))
-	       collect (propertize (getf e :primary-name)
-				   'id (getf e :pid))))))
+	       collect (propertize (cl-getf e :primary-name)
+				   'id (cl-getf e :pid))))))
    (t
     nil)))
 
 (defun imdb-highlight-match (match strings)
   (dolist (string strings)
-    (when-let ((start (search (downcase match) (downcase string))))
+    (when-let ((start (cl-search (downcase match) (downcase string))))
       (put-text-property start (+ start (length match)) 'face 'underline
 			 string)))
   strings)
@@ -1458,10 +1466,10 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-sort-people-completions (completions)
   (cl-sort completions '>
 	   :key (lambda (e)
-		  (or (getf (car (sqorm-select-where
-				  "select count(*) from principal inner join movie on movie.mid = principal.mid where pid = ? and category in ('actor', 'actress', 'director') and movie.type = 'movie'"
-				  (get-text-property 1 'id e)))
-			    :count)
+		  (or (cl-getf (car (sqorm-select-where
+				     "select count(*) from principal inner join movie on movie.mid = principal.mid where pid = ? and category in ('actor', 'actress', 'director') and movie.type = 'movie'"
+				     (get-text-property 1 'id e)))
+			       :count)
 		      0))))
 
 (defun imdb-complete-film ()
@@ -1476,12 +1484,12 @@ This will take some hours and use 10GB of disk space."
 			       (format "%s*" string))))
       (cond
        ((and (= (length matches) 1)
-	     (search (downcase string)
-		     (downcase (getf (car matches) :primary-title))))
+	     (cl-search (downcase string)
+			(downcase (cl-getf (car matches) :primary-title))))
 	(cons
 	 t
-	 (propertize (getf (car matches) :primary-title)
-		     'id (getf (car matches) :mid))))
+	 (propertize (cl-getf (car matches) :primary-title)
+		     'id (cl-getf (car matches) :mid))))
        ((null matches)
 	nil)
        (t
@@ -1489,9 +1497,10 @@ This will take some hours and use 10GB of disk space."
 	 (downcase string)
 	 (cl-loop for e in matches
 		  collect (substring    
-			   (downcase (getf e :primary-title))
-			   (search (downcase string)
-				   (downcase (getf e :primary-title))))))))))
+			   (downcase (cl-getf e :primary-title))
+			   (cl-search
+			    (downcase string)
+			    (downcase (cl-getf e :primary-title))))))))))
    ;; all-completions
    ((eq flag t)
     (imdb-highlight-match
@@ -1499,18 +1508,18 @@ This will take some hours and use 10GB of disk space."
      (imdb-sort-film-completions
       (cl-loop for e in (sqorm-find 'movie-search :movie-search '=
 				    (format "%s*" string))
-	       collect (propertize (getf e :primary-title)
-				   'id (getf e :mid))))))
+	       collect (propertize (cl-getf e :primary-title)
+				   'id (cl-getf e :mid))))))
    (t
     nil)))
 
 (defun imdb-sort-film-completions (completions)
   (cl-sort completions '>
 	   :key (lambda (e)
-		  (or (getf (car (sqorm-select-where
-				  "select votes from rating where mid = ?"
-				  (get-text-property 1 'id e)))
-			    :votes)
+		  (or (cl-getf (car (sqorm-select-where
+				     "select votes from rating where mid = ?"
+				     (get-text-property 1 'id e)))
+			       :votes)
 		      0))))
 
 (defun imdb-populate-search ()
@@ -1527,10 +1536,10 @@ This will take some hours and use 10GB of disk space."
       (when (zerop (% (cl-incf lines) 1000))
 	(message "Read %d lines (%.1f%%)" lines
 		 (* (/ (* lines 1.0) total) 100)))
-      (let ((name (getf (car (sqorm-select 'person :pid (getf pid :pid)))
-			:primary-name)))
+      (let ((name (cl-getf (car (sqorm-select 'person :pid (cl-getf pid :pid)))
+			   :primary-name)))
 	(sqorm-insert (imdb-make 'person-search
-				 (list name (getf pid :pid)))))))
+				 (list name (cl-getf pid :pid)))))))
   (sqlite3-commit imdb-db)
 
   (ignore-errors
@@ -1547,8 +1556,8 @@ This will take some hours and use 10GB of disk space."
 	(message "Read %d lines (%.1f%%)" lines
 		 (* (/ (* lines 1.0) total) 100)))
       (sqorm-insert (imdb-make 'movie-search
-			       (list (getf film :primary-title)
-				     (getf film :mid))))))
+			       (list (cl-getf film :primary-title)
+				     (cl-getf film :mid))))))
   (sqlite3-commit imdb-db))
 
 (defun imdb-choose-completion (&optional event)

@@ -23,13 +23,7 @@
 
 ;;; Commentary:
 
-;; To work, this needs the sqlite3 module
-;; https://github.com/syohex/emacs-sqlite3
-;; which needs:
-
-;; sudo apt install sqlite3-pcre libsqlite3-dev
-
-;; The Emacs has to be pretty new -- anything older than Emacs 26
+;; The Emacs has to be pretty new -- anything older than Emacs 20
 ;; probably won't work.  And it has to be built with module support.
 
 ;; After getting all that set up, you need to download the IMDB
@@ -49,7 +43,6 @@
   (setq byte-compile-warnings '(not cl-functions)))
 
 (require 'imdb)
-(require 'sqlite3)
 (require 'sqorm)
 (require 'cl-lib)
 (require 'browse-url)
@@ -199,13 +192,13 @@ This will take some hours and use 10GB of disk space."
    "mtidx on movie(primary_title)"))
 
 (defun imdb-create-search-tables ()
-  (sqlite3-execute-batch
+  (sqlite-execute
    imdb-db
    "create virtual table person_search USING fts5 (primary_name, pid)"))
 
 (defun imdb-create-index (&rest statements)
   (dolist (statement statements)
-    (sqlite3-execute-batch
+    (sqlite-execute
      imdb-db (concat "create index if not exists " statement))))
 
 (defun imdb-read-line ()
@@ -219,9 +212,9 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-read-tsv (tables file function)
   (with-temp-buffer
     (dolist (table tables)
-      (sqlite3-execute-batch imdb-db (format "delete from %s"
-					     (sqorm-dehyphenate table))))
-    (sqlite3-transaction imdb-db)
+      (sqlite-execute imdb-db (format "delete from %s"
+				      (sqorm-dehyphenate table))))
+    (sqlite-transaction imdb-db)
     (insert-file-contents (format (expand-file-name "%s.tsv" imdb-db-directory)
                                   file))
     (forward-line 1)
@@ -233,7 +226,7 @@ This will take some hours and use 10GB of disk space."
 		   (* (/ (* lines 1.0) total) 100)))
 	(funcall function (imdb-read-line))
 	(forward-line 1)))
-    (sqlite3-commit imdb-db)))
+    (sqlite-commit imdb-db)))
 
 (defun imdb-read-simple (table file)
   (imdb-read-tsv
@@ -1524,11 +1517,11 @@ This will take some hours and use 10GB of disk space."
 
 (defun imdb-populate-search ()
   (ignore-errors
-    (sqlite3-execute-batch imdb-db "drop table person_search"))
-  (sqlite3-execute-batch
+    (sqlite-execute imdb-db "drop table person_search"))
+  (sqlite-execute
    imdb-db
    "create virtual table person_search USING fts5 (primary_name, pid)")
-  (sqlite3-transaction imdb-db)
+  (sqlite-transaction imdb-db)
   (let* ((pids (sqorm-select-where "select pid from principal where category in ('actor', 'actress', 'director') group by pid having count(mid) > 10"))
 	 (lines 1)
 	 (total (length pids)))
@@ -1540,14 +1533,13 @@ This will take some hours and use 10GB of disk space."
 			   :primary-name)))
 	(sqorm-insert (imdb-make 'person-search
 				 (list name (cl-getf pid :pid)))))))
-  (sqlite3-commit imdb-db)
+  (sqlite-commit imdb-db)
 
-  (ignore-errors
-    (sqlite3-execute-batch imdb-db "drop table movie_search"))
-  (sqlite3-execute-batch
+  (sqlite-execute imdb-db "drop table movie_search")
+  (sqlite-execute
    imdb-db
    "create virtual table movie_search USING fts5 (primary_title, mid)")
-  (sqlite3-transaction imdb-db)
+  (sqlite-transaction imdb-db)
   (let* ((films (sqorm-select-where "select primary_title, movie.mid from movie inner join rating on rating.mid = movie.mid and votes > 100"))
 	 (lines 1)
 	 (total (length films)))
@@ -1558,7 +1550,7 @@ This will take some hours and use 10GB of disk space."
       (sqorm-insert (imdb-make 'movie-search
 			       (list (cl-getf film :primary-title)
 				     (cl-getf film :mid))))))
-  (sqlite3-commit imdb-db))
+  (sqlite-commit imdb-db))
 
 (defun imdb-choose-completion (&optional event)
   "Choose the completion at point.

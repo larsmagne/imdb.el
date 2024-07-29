@@ -711,7 +711,7 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-mode-open-imdb (all)
   "Open the item under point in a web browser."
   (interactive "P")
-  (browse-url-default-browser (imdb-mode-get-url))
+  (funcall browse-url-secondary-browser-function (imdb-mode-get-url))
   (when all
     (when-let ((film (and (eq imdb-mode-mode 'film)
 			  (cl-getf (car (sqorm-select 'movie

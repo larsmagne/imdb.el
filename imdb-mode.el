@@ -662,7 +662,7 @@ This will take some hours and use 10GB of disk space."
 	'id (cl-getf person :pid))))
     (goto-char (point-min))))
 
-(defun imdb-mode-filter (films)
+(defun imdb-mode-filter (films &optional pid)
   (let ((films
 	 (if (not imdb-mode-filter-insignificant)
 	     films
@@ -682,8 +682,19 @@ This will take some hours and use 10GB of disk space."
 			     (member (cl-getf film :category)
 				     '("actor" "actress")))
 			(and (eq imdb-mode-filter-job 'directing)
-			     (member (cl-getf film :category)
-				     '("director"))))
+			     (or (member (cl-getf film :category)
+					 '("director"))
+				 ;; Also check whether the person is
+				 ;; listed as a crew member with role
+				 ;; "director".
+				 (and pid
+				      (member pid
+					      (seq-map
+					       (lambda (elem)
+						 (cl-getf elem :pid))
+					       (sqorm-select-where "select pid from crew where crew.category = 'director' and crew.mid = ?"
+								   (cl-getf film :mid))))))))
+			
 	       collect film))))
 
 (defun imdb-mode-select ()
@@ -925,7 +936,7 @@ This will take some hours and use 10GB of disk space."
 		 (reverse films) '<
 		 :key (lambda (e)
 			(or (cl-getf e :start-year) 1.0e+INF))))
-    (setq films (imdb-mode-filter films))
+    (setq films (imdb-mode-filter films id))
     (dolist (film films)
       (imdb-mode-person-film film id))
     (goto-char (point-min))

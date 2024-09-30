@@ -221,6 +221,9 @@ This will take some hours and use 10GB of disk space."
     (let ((lines 1)
 	  (total (count-lines (point-min) (point-max))))
       (while (not (eobp))
+	(when (zerop (% (cl-incf lines) 10000))
+	  (sqlite-commit imdb-db)
+	  (sqlite-transaction imdb-db))
 	(when (zerop (% (cl-incf lines) 1000))
 	  (message "%s: Read %d lines (%.1f%%)" file lines
 		   (* (/ (* lines 1.0) total) 100)))
@@ -674,28 +677,34 @@ This will take some hours and use 10GB of disk space."
 					     "camera_department"
 					     "self" "archive_footage"
 					     "sound_department"))))
-		    collect film))))
+		    collect film)))
+	(done (make-hash-table :test #'equal)))
     (if (not imdb-mode-filter-job)
 	films
       (cl-loop for film in films
-	       when (or (and (eq imdb-mode-filter-job 'acting)
-			     (member (cl-getf film :category)
-				     '("actor" "actress")))
-			(and (eq imdb-mode-filter-job 'directing)
-			     (or (member (cl-getf film :category)
-					 '("director"))
-				 ;; Also check whether the person is
-				 ;; listed as a crew member with role
-				 ;; "director".
-				 (and pid
-				      (member pid
-					      (seq-map
-					       (lambda (elem)
-						 (cl-getf elem :pid))
-					       (sqorm-select-where "select pid from crew where crew.category = 'director' and crew.mid = ?"
-								   (cl-getf film :mid))))))))
+	       when (and
+		     (not (gethash (cl-getf film :mid) done))
+		     (or
+		      (and (eq imdb-mode-filter-job 'acting)
+			   (member (cl-getf film :category)
+				   '("actor" "actress")))
+		      (and (eq imdb-mode-filter-job 'directing)
+			   (or
+			    (equal (cl-getf film :category) "director")
+			    ;; Check whether the person is listed as
+			    ;; a crew member with role "director".
+			    (and pid
+				 (member pid
+					 (seq-map
+					  (lambda (elem)
+					    (cl-getf elem :pid))
+					  (sqorm-select-where "select pid from crew where crew.category = 'director' and crew.mid = ?"
+							      (cl-getf film :mid)))))))))
 			
-	       collect film))))
+	       collect
+	       (progn
+		 (setf (gethash (cl-getf film :mid) done) t)
+		 film)))))
 
 (defun imdb-mode-select ()
   "Select the item under point and display details."
@@ -1546,7 +1555,8 @@ This will take some hours and use 10GB of disk space."
 				 (list name (cl-getf pid :pid)))))))
   (sqlite-commit imdb-db)
 
-  (sqlite-execute imdb-db "drop table movie_search")
+  (ignore-errors
+    (sqlite-execute imdb-db "drop table movie_search"))
   (sqlite-execute
    imdb-db
    "create virtual table movie_search USING fts5 (primary_title, mid)")

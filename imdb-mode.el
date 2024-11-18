@@ -666,21 +666,37 @@ This will take some hours and use 10GB of disk space."
     (goto-char (point-min))))
 
 (defun imdb-mode-filter (films &optional pid)
+  (let ((priority '("director" "writer" "producer" "actor" "editor")))
+    (setq films
+	  (sort
+	   (copy-sequence films)
+	   (lambda (f1 f2)
+	     (if (string= (cl-getf f1 :mid) (cl-getf f2 :mid))
+		 (< (or
+		     (seq-position priority (cl-getf f1 :category))
+		     -1)
+		    (or
+		     (seq-position priority (cl-getf f2 :category))
+		     -1))
+	       (< (seq-position films f1) (seq-position films f2)))))))
   (let ((films
-	 (if (not imdb-mode-filter-insignificant)
-	     films
-	   (cl-loop for film in films
-		    when (and (cl-getf film :start-year)
-			      (equal (cl-getf film :type) "movie")
-			      (not (member (cl-getf film :category)
-					   '("thanks" "miscellaneous"
-					     "camera_department"
-					     "self" "archive_footage"
-					     "sound_department"))))
-		    collect film)))
-	(done (make-hash-table :test #'equal)))
+	  (if (not imdb-mode-filter-insignificant)
+	      films
+	    (cl-loop for film in films
+		     when (and (cl-getf film :start-year)
+			       (equal (cl-getf film :type) "movie")
+			       (not (member (cl-getf film :category)
+					    '("thanks" "miscellaneous"
+					      "camera_department"
+					      "self" "archive_footage"
+					      "sound_department"))))
+		     collect film)))
+	 (done (make-hash-table :test #'equal)))
     (if (not imdb-mode-filter-job)
-	films
+	(cl-remove-duplicates films :test #'equal
+			      :key (lambda (f)
+				     (cl-getf f :mid))
+			      :from-end t)
       (cl-loop for film in films
 	       when (and
 		     (not (gethash (cl-getf film :mid) done))

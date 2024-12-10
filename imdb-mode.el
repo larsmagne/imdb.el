@@ -876,7 +876,12 @@ This will take some hours and use 10GB of disk space."
     (insert "\n")
     
     (dolist (person (cl-sort
-		     (sqorm-select 'principal :mid id) '<
+		     (cl-delete-duplicates
+		      (sqorm-select 'principal :mid id)
+		      :test #'equal
+		      :key (lambda (f)
+			     (cl-getf f :pid)))
+		     #'<
 		     :key (lambda (e)
 			    (let ((job (cl-getf e :category)))
 			      (cond

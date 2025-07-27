@@ -29,8 +29,9 @@
 (require 'url)
 (require 'dom)
 (require 'json)
+(require 'url-cache)
 
-(defvar imdb-query-url "https://www.imdb.com/find?q=%s&s=tt&ref_=fn_al_tt_mr")
+(defvar imdb-query-url "https://www.imdb.com/find/?q=%s&s=tt&ref_=fn_al_tt_mr")
 
 (defun imdb-url-retrieve-synchronously (url)
   (let ((cache (url-cache-create-filename url)))
@@ -45,7 +46,7 @@
 (defun imdb-get-data (title)
   (with-current-buffer (imdb-url-retrieve-synchronously
 			(format imdb-query-url
-				(replace-regexp-in-string "&" "%26" title)))
+				(browse-url-encode-url title)))
     (url-store-in-cache)
     (goto-char (point-min))
     (prog1

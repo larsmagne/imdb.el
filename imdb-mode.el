@@ -46,6 +46,7 @@
 (require 'sqorm)
 (require 'cl-lib)
 (require 'browse-url)
+(require 'open-web)
 
 (defvar imdb-db nil)
 (defvar imdb-db-directory (expand-file-name "imdb" user-emacs-directory))
@@ -747,17 +748,18 @@ This will take some hours and use 10GB of disk space."
 (defun imdb-mode-open-imdb (all)
   "Open the item under point in a web browser."
   (interactive "P")
-  (funcall browse-url-secondary-browser-function (imdb-mode-get-url))
-  (when all
-    (when-let ((film (and (eq imdb-mode-mode 'film)
-			  (cl-getf (car (sqorm-select 'movie
-						      :mid imdb-mode-search))
-				   :primary-title))))
-      (dolist (site '("rottentomatoes.com" "wikipedia.org"))
-	(funcall browse-url-secondary-browser-function
-		 (concat "https://www.google.com/search?q=site%3A"
-			 site "+"
-			 (string-replace " " "+" film)))))))
+  (let ((urls (list (imdb-mode-get-url))))
+    (when all
+      (when-let ((film (and (eq imdb-mode-mode 'film)
+			    (cl-getf (car (sqorm-select 'movie
+							:mid imdb-mode-search))
+				     :primary-title))))
+	(dolist (site '("rottentomatoes.com" "wikipedia.org"))
+	  (push (concat "https://www.google.com/search?q=site%3A"
+			site "+"
+			(string-replace " " "+" film))
+		urls))))
+    (open-webs urls)))
 
 (defun imdb-mode-load-all-images ()
   "Expand all the actor images in the current buffer."

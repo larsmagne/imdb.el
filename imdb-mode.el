@@ -1158,72 +1158,70 @@ This will take some hours and use 10GB of disk space."
 	    (mapcar (lambda (e) (cl-getf e :pid)) (nreverse updates))
 	    buffer 100 150 3)))))))
 
+(defun imdb-fetch-profile-picture (pid callback)
+  (imdb-url-retrieve
+   (imdb-mode-person-url pid)
+   (lambda (status)
+     (goto-char (point-min))
+     (when (and (search-forward "\n\n" nil t)
+		(not (cl-getf status :error)))
+       (url-store-in-cache)
+       (let* ((dom (libxml-parse-html-region (point) (point-max)))
+	      (img (cl-loop for elem in (dom-by-tag dom 'script)
+			    for image =
+			    (and (equal (dom-attr elem 'type)
+					"application/ld+json")
+				 (let ((json (json-parse-string
+					      (car (dom-children elem)))))
+				   (and json
+					(gethash "image" json))))
+			    when image
+			    return image)))
+	 (kill-buffer (current-buffer))
+	 (if img
+	     (imdb-url-retrieve
+	      img 
+	      (lambda (status)
+		(goto-char (point-min))
+		(if (and (search-forward "\n\n" nil t)
+			 (not (cl-getf status :error)))
+		    (progn
+		      (url-store-in-cache)
+		      (let ((data (buffer-substring (point) (point-max))))
+			(kill-buffer (current-buffer))
+			(funcall callback data)))
+		  (kill-buffer (current-buffer))
+		  (funcall callback nil))))
+	   (funcall callback nil)))))))
+
 (defun imdb-load-people-images (pids buffer width height newlines)
   (let ((pid (pop pids)))
-    (imdb-url-retrieve
-     (imdb-mode-person-url pid)
-     (lambda (status)
-       (goto-char (point-min))
-       (when (and (search-forward "\n\n" nil t)
-		  (not (cl-getf status :error)))
-	 (url-store-in-cache)
-	 (let* ((dom (libxml-parse-html-region (point) (point-max)))
-		(img (cl-loop for elem in (dom-by-tag dom 'script)
-			      for image =
-			      (and (equal (dom-attr elem 'type)
-					  "application/ld+json")
-				   (let ((json (json-parse-string
-						(car (dom-children elem)))))
-				     (and json
-					  (gethash "image" json))))
-			      when image
-			      return image)))
-	   (if img
-	       (imdb-url-retrieve
-		img 
-		(lambda (status)
-		  (imdb-load-people-image status pid buffer height newlines)))
-	     (when (buffer-live-p buffer)
-	       (with-current-buffer buffer
-		 (let ((inhibit-read-only t)
-		       match)
-		   (save-excursion
-		     (goto-char (point-min))
-		     (search-forward "\n\n" nil t newlines)
-		     (when (setq match (text-property-search-forward
-					'id pid t))
-		       (goto-char (prop-match-beginning match))
-		       (let ((id (get-text-property (point) 'id))
-			     (start (point)))
-			 (delete-region (point) (1+ (point)))
-			 (imdb-insert-placeholder width height "black")
-			 (put-text-property start (point) 'id id))))))))
-	   (when pids
-	     (imdb-load-people-images pids buffer width height newlines))))
-       (kill-buffer (current-buffer))))))
-
-(defun imdb-load-people-image (status pid buffer height newlines)
-  (goto-char (point-min))
-  (when (and (search-forward "\n\n" nil t)
-	     (not (cl-getf status :error)))
-    (url-store-in-cache)
-    (let ((data (buffer-substring (point) (point-max)))
-	  match)
-      (when (buffer-live-p buffer)
-	(with-current-buffer buffer
-	  (let ((inhibit-read-only t))
-	    (save-excursion
-	      (goto-char (point-min))
-	      (search-forward "\n\n" nil t newlines)
-	      (when (setq match (text-property-search-forward 'id pid t))
-		(goto-char (prop-match-beginning match))
-		(let ((id (get-text-property (point) 'id))
-		      (start (point)))
-		  (delete-region (point) (1+ (point)))
-		  (insert-image
-		   (create-image data (imdb-mode--image-type) t :height height))
-		  (put-text-property start (point) 'id id)))))))))
-  (kill-buffer (current-buffer)))
+    (imdb-fetch-profile-picture
+     pid
+     (lambda (image)
+       (when (buffer-live-p buffer)
+	 (with-current-buffer buffer
+	   (let ((inhibit-read-only t)
+		 match)
+	     (save-excursion
+	       (goto-char (point-min))
+	       (search-forward "\n\n" nil t newlines)
+	       (when (setq match (text-property-search-forward
+				  'id pid t))
+		 (goto-char (prop-match-beginning match))
+		 (let ((id (get-text-property (point) 'id))
+		       (start (point)))
+		   (delete-region (point) (1+ (point)))
+		   (if image
+		       (progn
+			 (insert-image
+			  (create-image image (imdb-mode--image-type) t
+					:height height))
+			 (put-text-property start (point) 'id id))
+		     (imdb-insert-placeholder width height "black"))
+		   (put-text-property start (point) 'id id))))))
+	 (when pids
+	   (imdb-load-people-images pids buffer width height newlines)))))))
 
 (defun imdb-person-query-films (pid)
   "Query imdb.com for all films that PID has appeared in."

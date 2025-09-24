@@ -1163,8 +1163,11 @@ This will take some hours and use 10GB of disk space."
    (imdb-mode-person-url pid)
    (lambda (status)
      (goto-char (point-min))
-     (when (and (search-forward "\n\n" nil t)
-		(not (cl-getf status :error)))
+     (if (or (not (search-forward "\n\n" nil t))
+	     (cl-getf status :error))
+	 (progn
+	   (kill-buffer (current-buffer))
+	   (funcall callback nil))
        (url-store-in-cache)
        (let* ((dom (libxml-parse-html-region (point) (point-max)))
 	      (img (cl-loop for elem in (dom-by-tag dom 'script)

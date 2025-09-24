@@ -625,6 +625,19 @@ This will take some hours and use 10GB of disk space."
 	(erase-buffer)
 	(imdb-mode-search-person-1 person)))))
 
+(defun imdb-mode-person-id (person)
+  (caar
+   (sort
+    (cl-loop for (_ pid) in (sqorm-select-where
+			     "select pid from person where lower(primary_name) = ?"
+			     (downcase person))
+	     collect (list pid (plist-get (car (sqorm-select-where
+						"select count(*) from principal where pid = ?"
+						pid))
+					  :count)))
+    (lambda (e1 e2)
+      (> (nth 1 e1) (nth 1 e2))))))
+
 (defun imdb-mode-search-person-1 (person)
   (let ((people (if sqorm-regexp
 		    (sqorm-select-where

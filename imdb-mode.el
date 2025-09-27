@@ -1008,7 +1008,7 @@ This will take some hours and use 10GB of disk space."
 			 (cl-getf film :mid)
 			 pid))))
 		  (imdb-face
-		   (if (plusp (cl-getf count :count))
+		   (if (cl-plusp (cl-getf count :count))
 		       (format " (tv series, %s episode%s)"
 			       (cl-getf count :count)
 			       (if (> (cl-getf count :count) 1)
@@ -1432,6 +1432,22 @@ This will take some hours and use 10GB of disk space."
 	    (insert string)
 	  (insert try)))))))
 
+(defvar imdb-completion-list-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [mouse-2] 'imdb-choose-completion)
+    (define-key map [follow-link] 'mouse-face)
+    (define-key map [down-mouse-2] nil)
+    (define-key map "\C-m" 'imdb-choose-completion)
+    (define-key map "\e\e\e" 'delete-completion-window)
+    (define-key map [left] 'previous-completion)
+    (define-key map [right] 'next-completion)
+    (define-key map [?\t] 'next-completion)
+    (define-key map [backtab] 'previous-completion)
+    (define-key map "q" 'quit-window)
+    (define-key map "z" 'kill-current-buffer)
+    map)
+  "Local map for completion list buffers.")
+
 (defun imdb-complete-show-matches (string collection)
   (let ((completion-list-insert-choice-function
 	 (lambda (_beg _end newtext)
@@ -1649,22 +1665,6 @@ If EVENT, use EVENT's position to determine the starting position."
              ;; If all else fails, just guess.
              (list (choose-completion-guess-base-position choice)))
          insert-function)))))
-
-(defvar imdb-completion-list-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map [mouse-2] 'imdb-choose-completion)
-    (define-key map [follow-link] 'mouse-face)
-    (define-key map [down-mouse-2] nil)
-    (define-key map "\C-m" 'imdb-choose-completion)
-    (define-key map "\e\e\e" 'delete-completion-window)
-    (define-key map [left] 'previous-completion)
-    (define-key map [right] 'next-completion)
-    (define-key map [?\t] 'next-completion)
-    (define-key map [backtab] 'previous-completion)
-    (define-key map "q" 'quit-window)
-    (define-key map "z" 'kill-current-buffer)
-    map)
-  "Local map for completion list buffers.")
 
 (defun imdb-mode--image-type ()
   (if (or (and (fboundp 'image-scaling-p)

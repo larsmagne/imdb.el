@@ -1369,6 +1369,8 @@ This will take some hours and use 10GB of disk space."
 	  (fetch-dom
 	   url
 	   :type 'string
+	   :min-level 'headless
+	   :ignore-previous-failures t
 	   :callback
 	   (lambda (result)
 	     (with-current-buffer buffer

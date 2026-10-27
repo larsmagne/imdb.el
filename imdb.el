@@ -40,7 +40,9 @@
       (let ((cache (url-cache-create-filename url)))
 	(if (file-exists-p cache)
 	    (insert-file-contents cache)
-	  (insert (fetch-dom url :type 'string))
+	  (insert (fetch-dom url :type 'string
+			     :min-level 'headless
+			     :ignore-previous-failures t))
           (let ((coding-system-for-write 'binary))
 	    (unless (file-exists-p (file-name-directory cache))
 	      (make-directory (file-name-directory cache) t))

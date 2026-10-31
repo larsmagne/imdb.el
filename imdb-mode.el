@@ -957,8 +957,7 @@ This will take some hours and use 10GB of disk space."
 		     "#a0a0f0"))))
 	       'id (cl-getf person :pid))))
     (goto-char (point-min))
-    (forward-line 1)
-    (imdb-get-actors id (current-buffer))))
+    (forward-line 1)))
 
 (defun imdb-mode-display-person (id)
   (let ((inhibit-read-only t)
@@ -1090,7 +1089,10 @@ This will take some hours and use 10GB of disk space."
 			     (equal (dom-attr image 'class) "ipc-image"))
 		   return src)
 	  buffer))
-       (kill-buffer (current-buffer))))))
+       (kill-buffer (current-buffer))
+       ;; After getting the film image, then insert extra actors for
+       ;; the film.
+       (imdb-get-actors id buffer)))))
 
 (defun imdb-placehold-film (buffer)
   (when (buffer-live-p buffer)

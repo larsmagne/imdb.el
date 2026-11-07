@@ -1201,15 +1201,28 @@ This will take some hours and use 10GB of disk space."
 	(caar (shr--parse-srcset srcset))
       (dom-attr img 'src))))
 
+(defun imdb--profile-picture-url (dom)
+  (cl-loop for image in (dom-by-tag dom 'img)
+	   when (equal (dom-attr image 'class) "ipc-image")
+	   return (imdb-largest-image image)))
+
+(defun imdb--remote-fetch-dom (url callback)
+  (eval-at
+   "lights" "corrigan" 8706
+   `(lars-fetch-dom ,url)
+   (lambda (result)
+     (with-current-buffer (generate-new-buffer " *fetch-dom*")
+       (set-buffer-multibyte nil)
+       (insert result)
+       (goto-char (point-min))
+       (funcall callback nil)))))
+
 (defun imdb-fetch-profile-picture (pid callback)
-  (imdb-url-retrieve-html
+  (imdb--remote-fetch-dom
    (imdb-mode-person-url pid)
    (lambda (_status)
-     (url-store-in-cache)
      (let* ((dom (libxml-parse-html-region (point) (point-max)))
-	    (img (cl-loop for image in (dom-by-tag dom 'img)
-			  when (equal (dom-attr image 'class) "ipc-image")
-			  return (imdb-largest-image image))))
+	    (img (imdb--profile-picture-url dom)))
        (kill-buffer (current-buffer))
        (if img
 	   (imdb-url-retrieve
